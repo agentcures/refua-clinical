@@ -1,0 +1,141 @@
+trial_id: refua-clinical-demo
+indication: Oncology
+phase: Phase II
+objective: >-
+  Select a dose/regimen that maximizes efficacy while controlling safety risk,
+  using copula-based virtual patients and adaptive randomization.
+seed: 7
+replicates: 120
+
+population:
+  size: 6000
+  covariates:
+    - name: age
+      distribution: normal
+      params:
+        mean: 60.0
+        sd: 10.0
+        min: 18.0
+        max: 85.0
+    - name: weight
+      distribution: lognormal
+      params:
+        mean: 78.0
+        cv: 0.25
+        min: 45.0
+        max: 140.0
+    - name: egfr
+      distribution: normal
+      params:
+        mean: 85.0
+        sd: 20.0
+        min: 25.0
+        max: 140.0
+    - name: biomarker_z
+      distribution: normal
+      params:
+        mean: 0.0
+        sd: 1.0
+        min: -3.0
+        max: 3.0
+  correlation:
+    - [1.0, 0.15, -0.25, 0.05]
+    - [0.15, 1.0, 0.10, 0.00]
+    - [-0.25, 0.10, 1.0, -0.10]
+    - [0.05, 0.00, -0.10, 1.0]
+
+pk_model:
+  bioavailability: 1.0
+  ka_per_hour: 0.9
+  cl_l_per_hour: 9.5
+  v_l: 110.0
+  omega_cl: 0.3
+  omega_v: 0.25
+  residual_prop: 0.12
+  covariate_effect_weight: 0.2
+  covariate_effect_egfr: 0.35
+
+pd_model:
+  baseline_mean: 55.0
+  baseline_sd: 10.0
+  placebo_improvement_per_day: 0.03
+  emax: 20.0
+  ec50_auc: 70.0
+  biomarker_effect: 2.0
+  residual_sd: 5.5
+  safety_intercept: -2.2
+  safety_exposure_coef: 0.02
+  safety_age_coef: 0.08
+
+endpoint:
+  name: change_from_baseline
+  kind: continuous
+  assessment_day: 84
+  responder_threshold: 12.0
+  target_difference: 6.0
+
+enrollment:
+  total_n: 180
+  accrual_per_block: 30
+  dropout_base: 0.08
+  drift_per_block: 0.6
+
+adaptive:
+  enabled: true
+  burn_in_n: 60
+  interim_every: 30
+  min_allocation: 0.15
+  posterior_samples: 600
+
+external_control:
+  enabled: false
+  n: 0
+  mean: 0.0
+  std: 1.0
+  weight: 0.0
+  dynamic_borrowing: true
+  commensurability_scale: 1.75
+  robust_mixture: 0.25
+
+estimand:
+  strategy: treatment_policy
+  rescue_penalty: 4.0
+  control_imputation_shift: 0.0
+
+stopping:
+  enabled: true
+  one_sided_alpha: 0.025
+  alpha_spending: obrien_fleming
+  success_posterior_threshold: 0.99
+  futility_posterior_threshold: 0.20
+  min_interim_n: 60
+  max_interims: 6
+
+heterogeneity:
+  enabled: false
+  n_sites: 25
+  n_countries: 6
+  site_sd: 1.25
+  country_sd: 0.80
+
+costs:
+  cost_per_patient: 25000.0
+  cost_per_interim: 45000.0
+  utility_scale: 1.0
+
+arms:
+  - arm_id: control
+    label: Standard of Care
+    dose_mg: 0.0
+    schedule_per_day: 1
+    is_control: true
+  - arm_id: low
+    label: Investigational Low Dose
+    dose_mg: 80.0
+    schedule_per_day: 1
+    is_control: false
+  - arm_id: high
+    label: Investigational High Dose
+    dose_mg: 140.0
+    schedule_per_day: 1
+    is_control: false
