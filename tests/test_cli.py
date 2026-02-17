@@ -192,3 +192,135 @@ def test_cli_init_simulate_and_rerun(tmp_path: Path) -> None:
 
     advice_payload = json.loads(advice_json_path.read_text(encoding="utf-8"))
     assert advice_payload["recommendations"]
+
+
+def test_cli_simulate_with_refua_integration(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    refua_payload_path = tmp_path / "refua_payload.json"
+    run_path = tmp_path / "run_refua.json"
+
+    rc = main(["init-config", "--output", str(config_path)])
+    assert rc == 0
+
+    config_text = config_path.read_text(encoding="utf-8")
+    config_text = config_text.replace("replicates: 250", "replicates: 16")
+    config_path.write_text(config_text, encoding="utf-8")
+
+    refua_payload_path.write_text(
+        json.dumps(
+            {
+                "ligands": [
+                    {
+                        "ligand_id": "lead_a",
+                        "rdkit": {
+                            "mol_wt": 340.0,
+                            "mol_log_p": 2.1,
+                            "tpsa": 82.0,
+                            "num_h_donors": 1.0,
+                            "num_h_acceptors": 5.0,
+                            "qed": 0.73,
+                            "medchem_alert_count": 0.0,
+                        },
+                        "admet": {
+                            "smiles": "CCO",
+                            "admet_score": 0.68,
+                            "adme_score": 0.70,
+                            "safety_score": 0.64,
+                            "red_flags": [],
+                            "yellow_flags": [],
+                            "scores": {
+                                "score_Bioavailability_Ma": 0.72,
+                                "score_hERG": 0.66,
+                                "score_DILI": 0.63,
+                                "score_admet": 0.68,
+                            },
+                        },
+                        "affinity": {"ic50": 42.0, "binding_probability": 0.79},
+                        "structure": {"confidence_score": 0.77},
+                    }
+                ],
+                "target_properties": {"length": 850.0, "instability_index": 45.0, "gravy": -0.2},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    rc = main(
+        [
+            "simulate",
+            "--config",
+            str(config_path),
+            "--refua-json",
+            str(refua_payload_path),
+            "--refua-apply",
+            "--output",
+            str(run_path),
+        ]
+    )
+    assert rc == 0
+
+    run_payload = json.loads(run_path.read_text(encoding="utf-8"))
+    assert "refua" in run_payload
+    assert "summary" in run_payload["refua"]
+    assert run_payload["refua"]["summary"]["selected_ligand_id"] == "lead_a"
+    assert run_payload["refua"]["adjustments"] is not None
+
+
+def test_cli_integrate_refua_generates_adjusted_config_and_summary(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    refua_payload_path = tmp_path / "refua_payload.json"
+    output_config_path = tmp_path / "config_adjusted.yaml"
+    output_summary_path = tmp_path / "integration_summary.json"
+
+    rc = main(["init-config", "--output", str(config_path)])
+    assert rc == 0
+
+    refua_payload_path.write_text(
+        json.dumps(
+            {
+                "ligands": [
+                    {
+                        "ligand_id": "lead_a",
+                        "admet": {
+                            "smiles": "CCO",
+                            "admet_score": 0.65,
+                            "adme_score": 0.67,
+                            "safety_score": 0.61,
+                            "red_flags": [],
+                            "yellow_flags": [],
+                            "scores": {
+                                "score_Bioavailability_Ma": 0.71,
+                                "score_hERG": 0.63,
+                                "score_DILI": 0.60,
+                                "score_admet": 0.65,
+                            },
+                        },
+                        "affinity": {"ic50": 48.0, "binding_probability": 0.75},
+                        "structure": {"confidence_score": 0.73},
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    rc = main(
+        [
+            "integrate-refua",
+            "--config",
+            str(config_path),
+            "--refua-json",
+            str(refua_payload_path),
+            "--output-config",
+            str(output_config_path),
+            "--output-summary",
+            str(output_summary_path),
+        ]
+    )
+    assert rc == 0
+    assert output_config_path.exists()
+    assert output_summary_path.exists()
+
+    summary = json.loads(output_summary_path.read_text(encoding="utf-8"))
+    assert summary["summary"]["selected_ligand_id"] == "lead_a"
+    assert "management" in summary
