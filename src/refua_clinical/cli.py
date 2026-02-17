@@ -35,6 +35,13 @@ from .io import (
 from .models import default_simulation_config
 from .optimization import optimization_to_markdown, optimize_design_space
 from .protocol import recommend_protocol, render_protocol_markdown
+from .refua_bridge import (
+    RefuaIntegrationPolicy,
+    apply_refua_adjustments,
+    extract_admet_profile_from_refua_payload,
+    load_refua_payload,
+    summarize_refua_payload,
+)
 from .research import list_references
 from .transportability import assess_transportability, load_tabular, transportability_to_markdown
 from .trial import simulate_trials, trial_result_to_mapping
@@ -70,6 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Apply ADMET-informed parameter adjustments before simulation.",
     )
+    _add_refua_arguments(simulate_parser)
     simulate_parser.set_defaults(handler=_cmd_simulate)
 
     rerun_parser = sub.add_parser("rerun", help="Rerun from previous run artifact with overrides")
@@ -346,6 +354,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Apply ADMET-informed parameter adjustments before simulation.",
     )
+    _add_refua_arguments(workup_parser)
     workup_parser.add_argument(
         "--replicates-per-candidate",
         type=int,
@@ -416,6 +425,47 @@ def build_parser() -> argparse.ArgumentParser:
     )
     workup_parser.set_defaults(handler=_cmd_workup)
 
+    integrate_refua_parser = sub.add_parser(
+        "integrate-refua",
+        help="Apply Refua payload signals to a clinical config and write adjusted outputs",
+    )
+    integrate_refua_parser.add_argument(
+        "--config",
+        type=Path,
+        required=True,
+        help="Simulation config YAML/JSON",
+    )
+    integrate_refua_parser.add_argument(
+        "--refua-json",
+        type=Path,
+        required=True,
+        help="Refua payload JSON/YAML",
+    )
+    integrate_refua_parser.add_argument(
+        "--output-config",
+        type=Path,
+        required=True,
+        help="Output path for adjusted config (.yaml/.json)",
+    )
+    integrate_refua_parser.add_argument(
+        "--output-summary",
+        type=Path,
+        default=None,
+        help="Optional JSON output path for integration summary",
+    )
+    integrate_refua_parser.add_argument(
+        "--refua-ligand-id",
+        default=None,
+        help="Optional preferred ligand id from the Refua payload.",
+    )
+    integrate_refua_parser.add_argument(
+        "--refua-max-candidate-arms",
+        type=int,
+        default=4,
+        help="Maximum number of Refua candidate treatment arms to build.",
+    )
+    integrate_refua_parser.set_defaults(handler=_cmd_integrate_refua)
+
     refs_parser = sub.add_parser("research", help="Print research references used by this package")
     refs_parser.set_defaults(handler=_cmd_research)
 
@@ -432,7 +482,31 @@ def _cmd_init_config(args: argparse.Namespace) -> int:
 def _cmd_simulate(args: argparse.Namespace) -> int:
     config = _load_config(args.config)
     admet_info = _load_admet_for_args(args)
-    if admet_info is not None and args.admet_adjustments:
+    refua_info = _load_refua_for_args(args)
+
+    if admet_info is None and refua_info is not None and refua_info["selected_admet"] is not None:
+        selected_admet = dict(refua_info["selected_admet"])
+        admet_info = {
+            "profile": selected_admet,
+            "summary": summarize_admet_profile(selected_admet),
+        }
+
+    if refua_info is not None and bool(args.refua_apply):
+        policy = _refua_policy_from_args(args)
+        config, refua_adjustments = apply_refua_adjustments(
+            config,
+            refua_info["payload"],
+            policy=policy,
+        )
+        refua_info["adjustments"] = refua_adjustments
+    elif refua_info is not None:
+        refua_info["adjustments"] = None
+
+    if (
+        admet_info is not None
+        and bool(args.admet_adjustments)
+        and not (refua_info is not None and bool(args.refua_apply))
+    ):
         config, adjustments = apply_admet_adjustments(config, admet_info["profile"])
         admet_info["adjustments"] = adjustments
     elif admet_info is not None:
@@ -445,6 +519,11 @@ def _cmd_simulate(args: argparse.Namespace) -> int:
             "summary": admet_info["summary"],
             "adjustments": admet_info["adjustments"],
         }
+    if refua_info is not None:
+        payload["refua"] = {
+            "summary": refua_info["summary"],
+            "adjustments": refua_info["adjustments"],
+        }
     dump_json(args.output, payload)
     output_payload: dict[str, Any] = {"run_id": payload["run_id"], "summary": payload["summary"]}
     if admet_info is not None:
@@ -452,6 +531,15 @@ def _cmd_simulate(args: argparse.Namespace) -> int:
             "safety_score": admet_info["summary"]["safety_score"],
             "admet_score": admet_info["summary"]["admet_score"],
             "adjusted": bool(admet_info["adjustments"] is not None),
+        }
+    if refua_info is not None:
+        refua_summary = _mapping(refua_info["summary"])
+        management = _mapping(_mapping(refua_info.get("adjustments")).get("management"))
+        output_payload["refua"] = {
+            "selected_ligand_id": refua_summary.get("selected_ligand_id"),
+            "candidate_count": refua_summary.get("candidate_count"),
+            "adjusted": bool(refua_info.get("adjustments") is not None),
+            "readiness_index": management.get("readiness_index"),
         }
     print(json.dumps(output_payload, indent=2))
     return 0
@@ -696,7 +784,31 @@ def _cmd_workup(args: argparse.Namespace) -> int:
 
     config = _load_config(args.config)
     admet_info = _load_admet_for_args(args)
-    if admet_info is not None and args.admet_adjustments:
+    refua_info = _load_refua_for_args(args)
+
+    if admet_info is None and refua_info is not None and refua_info["selected_admet"] is not None:
+        selected_admet = dict(refua_info["selected_admet"])
+        admet_info = {
+            "profile": selected_admet,
+            "summary": summarize_admet_profile(selected_admet),
+        }
+
+    if refua_info is not None and bool(args.refua_apply):
+        policy = _refua_policy_from_args(args)
+        config, refua_adjustments = apply_refua_adjustments(
+            config,
+            refua_info["payload"],
+            policy=policy,
+        )
+        refua_info["adjustments"] = refua_adjustments
+    elif refua_info is not None:
+        refua_info["adjustments"] = None
+
+    if (
+        admet_info is not None
+        and bool(args.admet_adjustments)
+        and not (refua_info is not None and bool(args.refua_apply))
+    ):
         config, adjustments = apply_admet_adjustments(config, admet_info["profile"])
         admet_info["adjustments"] = adjustments
     elif admet_info is not None:
@@ -708,6 +820,11 @@ def _cmd_workup(args: argparse.Namespace) -> int:
         run_payload["admet"] = {
             "summary": admet_info["summary"],
             "adjustments": admet_info["adjustments"],
+        }
+    if refua_info is not None:
+        run_payload["refua"] = {
+            "summary": refua_info["summary"],
+            "adjustments": refua_info["adjustments"],
         }
     run_path = output_dir / "run.json"
     dump_json(run_path, run_payload)
@@ -812,6 +929,35 @@ def _cmd_workup(args: argparse.Namespace) -> int:
                 "transportability": transportability_payload["risk_level"]
                 if transportability_payload is not None
                 else None,
+                "refua_selected_ligand": _mapping(
+                    _mapping(run_payload.get("refua")).get("summary")
+                ).get("selected_ligand_id"),
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
+def _cmd_integrate_refua(args: argparse.Namespace) -> int:
+    config = _load_config(args.config)
+    payload = load_refua_payload(args.refua_json)
+    policy = _refua_policy_from_args(args)
+    adjusted, report = apply_refua_adjustments(config, payload, policy=policy)
+    _dump_config_like(args.output_config, config_to_mapping(adjusted))
+    if args.output_summary is not None:
+        dump_json(args.output_summary, report)
+
+    management = _mapping(report.get("management"))
+    summary = _mapping(report.get("summary"))
+    print(
+        json.dumps(
+            {
+                "output_config": str(args.output_config),
+                "output_summary": str(args.output_summary) if args.output_summary else None,
+                "selected_ligand_id": summary.get("selected_ligand_id"),
+                "candidate_count": summary.get("candidate_count"),
+                "readiness_index": management.get("readiness_index"),
             },
             indent=2,
         )
@@ -856,6 +1002,31 @@ def _add_admet_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_refua_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--refua-json",
+        type=Path,
+        default=None,
+        help="Optional Refua payload JSON/YAML with affinity/ADMET/property signals.",
+    )
+    parser.add_argument(
+        "--refua-apply",
+        action="store_true",
+        help="Apply Refua payload adjustments to trial assumptions.",
+    )
+    parser.add_argument(
+        "--refua-ligand-id",
+        default=None,
+        help="Optional preferred ligand id when multiple Refua candidates are present.",
+    )
+    parser.add_argument(
+        "--refua-max-candidate-arms",
+        type=int,
+        default=4,
+        help="Maximum number of candidate treatment arms generated from Refua ligands.",
+    )
+
+
 def _load_admet_for_args(args: argparse.Namespace) -> dict[str, Any] | None:
     if args.admet_json is None and args.admet_smiles is None:
         return None
@@ -875,14 +1046,66 @@ def _load_admet_for_args(args: argparse.Namespace) -> dict[str, Any] | None:
     }
 
 
+def _load_refua_for_args(args: argparse.Namespace) -> dict[str, Any] | None:
+    payload_path = getattr(args, "refua_json", None)
+    if payload_path is None:
+        return None
+
+    payload = load_refua_payload(payload_path)
+    preferred_ligand_id = getattr(args, "refua_ligand_id", None)
+    summary = summarize_refua_payload(payload, preferred_ligand_id=preferred_ligand_id)
+    selected_admet = extract_admet_profile_from_refua_payload(
+        payload,
+        preferred_ligand_id=preferred_ligand_id,
+    )
+    return {
+        "payload": payload,
+        "summary": summary,
+        "selected_admet": selected_admet,
+    }
+
+
+def _refua_policy_from_args(args: argparse.Namespace) -> RefuaIntegrationPolicy:
+    preferred_ligand_id = getattr(args, "refua_ligand_id", None)
+    max_candidate_arms = max(int(getattr(args, "refua_max_candidate_arms", 4)), 1)
+    return RefuaIntegrationPolicy(
+        preferred_ligand_id=str(preferred_ligand_id) if preferred_ligand_id else None,
+        max_candidate_arms=max_candidate_arms,
+    )
+
+
 def _admet_from_run_payload(run_payload: dict[str, Any]) -> dict[str, Any] | None:
     admet = run_payload.get("admet")
     if not isinstance(admet, dict):
+        refua = run_payload.get("refua")
+        if isinstance(refua, dict):
+            refua_summary = refua.get("summary")
+            if isinstance(refua_summary, dict):
+                selected = refua_summary.get("selected_candidate")
+                if isinstance(selected, dict):
+                    selected_admet = selected.get("admet_summary")
+                    if isinstance(selected_admet, dict):
+                        return dict(selected_admet)
         return None
+
     summary = admet.get("summary")
     if isinstance(summary, dict):
         return dict(summary)
     return None
+
+
+def _dump_config_like(path: Path, payload: dict[str, Any]) -> None:
+    suffix = path.suffix.lower()
+    if suffix == ".json":
+        dump_json(path, payload)
+    else:
+        dump_yaml(path, payload)
+
+
+def _mapping(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return dict(value)
+    return {}
 
 
 def main(argv: list[str] | None = None) -> int:
