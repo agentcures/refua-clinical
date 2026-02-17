@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "refua-clinical"
-version = "0.2.0"
+version = "0.6.0"
 description = "PK/PD-driven virtual patient and clinical trial simulation toolkit for Refua."
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
