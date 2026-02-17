@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, overload
 
 import numpy as np
 
@@ -915,6 +915,24 @@ def _value_any_key(
         if isinstance(value, int | float):
             return float(value)
     return float(default)
+
+
+@overload
+def _read_float(
+    mapping: dict[str, Any],
+    key: str,
+    *,
+    default: float,
+) -> float: ...
+
+
+@overload
+def _read_float(
+    mapping: dict[str, Any],
+    key: str,
+    *,
+    default: None = None,
+) -> float | None: ...
 
 
 def _read_float(
