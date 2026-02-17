@@ -177,6 +177,44 @@ protocol = recommend_protocol(config)
 print(result.summary["power"], protocol.protocol["protocol_id"])
 ```
 
+## End-to-end notebook (Refua + refua-clinical)
+
+Use `examples/refua_api_to_clinical_e2e.ipynb` for a full workflow that starts with a
+small-molecule SMILES and protein target in `refua`, computes molecule/target properties, and
+feeds those into `refua-clinical` simulation and protocol recommendation outputs.
+
+From a monorepo checkout:
+
+```bash
+cd refua
+pip install -e .[admet]
+cd ../refua-clinical
+pip install -e .[admet]
+jupyter notebook examples/refua_api_to_clinical_e2e.ipynb
+```
+
+Minimal combined API sketch:
+
+```python
+from refua import Protein, SM
+from refua_clinical import (
+    apply_admet_adjustments,
+    default_simulation_config,
+    recommend_protocol,
+    simulate_trials,
+)
+
+sm = SM("Cn1cnc2n(C)c(=O)n(C)c(=O)c12")
+target = Protein("MSEQNNTEMTFQIQRIYTKDISFEAPNAPHVFQQLAGKYTPEEIRNVLSTLQKAD", ids="A")
+
+config = default_simulation_config()
+admet = sm.admet_profile(include_scoring=True)
+adjusted_config, _ = apply_admet_adjustments(config, admet)
+result = simulate_trials(adjusted_config)
+protocol = recommend_protocol(adjusted_config, replicates_per_candidate=30)
+print(target.length(), result.summary["power"], protocol.protocol["protocol_id"])
+```
+
 ## Research-informed design choices
 
 This package maps current literature and regulatory guidance into practical simulation defaults:
