@@ -6,4 +6,5 @@ include SECURITY.md
 include src/refua_clinical/py.typed
 recursive-include examples *.yaml
 recursive-include examples *.ipynb
+recursive-include examples *.json
 recursive-include tests *.py
