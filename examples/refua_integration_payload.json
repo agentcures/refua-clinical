@@ -1,0 +1,45 @@
+{
+  "ligands": [
+    {
+      "ligand_id": "lead_a",
+      "smiles": "CCO",
+      "rdkit": {
+        "mol_wt": 340.0,
+        "mol_log_p": 2.1,
+        "tpsa": 82.0,
+        "num_h_donors": 1.0,
+        "num_h_acceptors": 5.0,
+        "num_rotatable_bonds": 4.0,
+        "qed": 0.73,
+        "medchem_alert_count": 0.0
+      },
+      "admet": {
+        "smiles": "CCO",
+        "admet_score": 0.68,
+        "adme_score": 0.70,
+        "safety_score": 0.64,
+        "red_flags": [],
+        "yellow_flags": [],
+        "scores": {
+          "score_Bioavailability_Ma": 0.72,
+          "score_hERG": 0.66,
+          "score_DILI": 0.63,
+          "score_admet": 0.68
+        }
+      },
+      "affinity": {
+        "ic50": 42.0,
+        "binding_probability": 0.79
+      },
+      "structure": {
+        "confidence_score": 0.77
+      }
+    }
+  ],
+  "target_properties": {
+    "length": 850.0,
+    "instability_index": 45.0,
+    "gravy": -0.2,
+    "antibody_liability_score": 2.8
+  }
+}

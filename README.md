@@ -73,6 +73,26 @@ refua-clinical simulate \
   --output artifacts/run_admet.json
 ```
 
+Run with richer Refua payload integration (affinity + confidence + properties + ADMET):
+
+```bash
+refua-clinical simulate \
+  --config examples/default_config.yaml \
+  --refua-json examples/refua_integration_payload.json \
+  --refua-apply \
+  --output artifacts/run_refua.json
+```
+
+Generate an adjusted config from Refua payload without running simulation:
+
+```bash
+refua-clinical integrate-refua \
+  --config examples/default_config.yaml \
+  --refua-json examples/refua_integration_payload.json \
+  --output-config artifacts/config_refua.yaml \
+  --output-summary artifacts/refua_integration_summary.json
+```
+
 Generate tailored protocol:
 
 ```bash
@@ -166,15 +186,61 @@ refua-clinical evidence \
   --output-dir artifacts/evidence/clinical_run_001
 ```
 
-## Python API
+## Python API (Object-Oriented)
+
+The primary API is the fluent object model centered on `ClinicalStudy` and `ClinicalRun`.
 
 ```python
-from refua_clinical import default_simulation_config, recommend_protocol, simulate_trials
+from refua_clinical import ClinicalStudy
 
-config = default_simulation_config()
-result = simulate_trials(config)
-protocol = recommend_protocol(config)
-print(result.summary["power"], protocol.protocol["protocol_id"])
+study = (
+    ClinicalStudy.default()
+    .trial(
+        trial_id="oncology-refua-oo-demo",
+        indication="Oncology",
+        phase="Phase II",
+        replicates=96,
+    )
+    .set("enrollment.total_n", 220)
+)
+
+run = study.simulate()
+protocol = run.recommend_protocol(replicates_per_candidate=30)
+print(run.summary["power"], protocol.protocol["protocol_id"])
+```
+
+Refua payload-to-clinical mapping API:
+
+```python
+from refua_clinical import (
+    ClinicalStudy,
+)
+
+payload = {
+    "ligands": [
+        {
+            "ligand_id": "lead_a",
+            "affinity": {"ic50": 42.0, "binding_probability": 0.79},
+            "structure": {"confidence_score": 0.77},
+            "admet": {"admet_score": 0.68, "adme_score": 0.70, "safety_score": 0.64},
+            "rdkit": {"mol_wt": 340.0, "mol_log_p": 2.1, "qed": 0.73},
+        }
+    ],
+    "target_properties": {"length": 850.0, "instability_index": 45.0},
+}
+
+study = (
+    ClinicalStudy.default()
+    .trial(trial_id="refua-bridge-demo", replicates=80)
+    .refua_payload(payload, apply=True, max_candidate_arms=3)
+)
+run = study.simulate()
+workup = run.workup(
+    replicates_per_candidate=30,
+    voi_extra_n=[0, 30, 60],
+    include_sensitivity=True,
+)
+print(run.summary["power"], workup.advice.report["summary"]["safety_event_rate"])
 ```
 
 ## End-to-end notebook (Refua + refua-clinical)
@@ -198,21 +264,25 @@ Minimal combined API sketch:
 ```python
 from refua import Protein, SM
 from refua_clinical import (
-    apply_admet_adjustments,
-    default_simulation_config,
-    recommend_protocol,
-    simulate_trials,
+    ClinicalStudy,
 )
 
-sm = SM("Cn1cnc2n(C)c(=O)n(C)c(=O)c12")
+sm = SM("Cn1cnc2n(C)c(=O)n(C)c(=O)c12")  # small molecule
 target = Protein("MSEQNNTEMTFQIQRIYTKDISFEAPNAPHVFQQLAGKYTPEEIRNVLSTLQKAD", ids="A")
 
-config = default_simulation_config()
-admet = sm.admet_profile(include_scoring=True)
-adjusted_config, _ = apply_admet_adjustments(config, admet)
-result = simulate_trials(adjusted_config)
-protocol = recommend_protocol(adjusted_config, replicates_per_candidate=30)
-print(target.length(), result.summary["power"], protocol.protocol["protocol_id"])
+study = (
+    ClinicalStudy.default()
+    .trial(
+        trial_id="refua-object-api-demo",
+        indication="Target-program demo",
+        replicates=72,
+    )
+    .admet_profile(sm.admet_profile(include_scoring=True), apply=True)
+)
+
+run = study.simulate()
+protocol = run.recommend_protocol(replicates_per_candidate=30)
+print(target.length(), run.summary["power"], protocol.protocol["protocol_id"])
 ```
 
 ## Research-informed design choices
