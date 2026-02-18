@@ -17,6 +17,7 @@ It generates copula-based virtual patients, runs adaptive multi-arm trial simula
 - Explainability/advice engine that outputs a narrative, interim decision-card summaries, and prioritized actionable recommendations.
 - Re-run workflow from prior run artifacts with YAML/JSON or inline overrides.
 - ADMET-aware simulation path with optional parameter adjustments from Refua ADMET profiles.
+- Biologics mode with IV/SC route support, interval dosing, and optional TMDD-like clearance scaling.
 - One-shot `workup` CLI to generate all major artifacts in one run.
 - Optional integrations:
   - `refua-data` for covariate inference from materialized datasets.
@@ -207,6 +208,20 @@ study = (
 run = study.simulate()
 protocol = run.recommend_protocol(replicates_per_candidate=30)
 print(run.summary["power"], protocol.protocol["protocol_id"])
+```
+
+Biologics preset example:
+
+```python
+from refua_clinical import ClinicalStudy
+
+study = (
+    ClinicalStudy.default()
+    .trial(trial_id="mab-phase2", indication="Immunology", phase="Phase II", replicates=80)
+    .biologics_mode(route="sc", dosing_interval_hours=336.0, tmdd_strength=0.35)  # q14d
+)
+run = study.simulate()
+print(run.summary["power"], run.config.pk_model.modality, run.config.pk_model.route)
 ```
 
 Refua payload-to-clinical mapping API:
