@@ -84,6 +84,17 @@ refua-clinical simulate \
   --output artifacts/run_refua.json
 ```
 
+Run using a shared biologics preset from CLI:
+
+```bash
+refua-clinical simulate \
+  --config examples/default_config.yaml \
+  --modality-preset biologic-sc \
+  --preset-dosing-interval-hours 336 \
+  --preset-tmdd-strength 0.35 \
+  --output artifacts/run_biologic.json
+```
+
 Generate an adjusted config from Refua payload without running simulation:
 
 ```bash
@@ -218,7 +229,11 @@ from refua_clinical import ClinicalStudy
 study = (
     ClinicalStudy.default()
     .trial(trial_id="mab-phase2", indication="Immunology", phase="Phase II", replicates=80)
-    .biologics_mode(route="sc", dosing_interval_hours=336.0, tmdd_strength=0.35)  # q14d
+    .modality_preset(
+        preset="biologic-sc",
+        dosing_interval_hours=336.0,
+        tmdd_strength=0.35,
+    )  # q14d
 )
 run = study.simulate()
 print(run.summary["power"], run.config.pk_model.modality, run.config.pk_model.route)

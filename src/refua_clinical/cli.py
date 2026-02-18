@@ -32,6 +32,7 @@ from .io import (
     load_mapping,
     merge_mappings,
 )
+from .modality import apply_modality_preset, list_modality_presets
 from .models import default_simulation_config
 from .optimization import optimization_to_markdown, optimize_design_space
 from .protocol import recommend_protocol, render_protocol_markdown
@@ -62,6 +63,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     init_parser = sub.add_parser("init-config", help="Write a starter simulation config")
     init_parser.add_argument("--output", type=Path, required=True, help="Output YAML path")
+    _add_modality_preset_arguments(init_parser)
     init_parser.set_defaults(handler=_cmd_init_config)
 
     simulate_parser = sub.add_parser("simulate", help="Run clinical trial simulations")
@@ -71,6 +73,7 @@ def build_parser() -> argparse.ArgumentParser:
     simulate_parser.add_argument(
         "--output", type=Path, required=True, help="Run artifact JSON path"
     )
+    _add_modality_preset_arguments(simulate_parser)
     _add_admet_arguments(simulate_parser)
     simulate_parser.add_argument(
         "--admet-adjustments",
@@ -95,6 +98,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Inline override as dotted.path=value (repeatable)",
     )
     rerun_parser.add_argument("--output", type=Path, required=True, help="Run artifact JSON path")
+    _add_modality_preset_arguments(rerun_parser)
     rerun_parser.set_defaults(handler=_cmd_rerun)
 
     protocol_parser = sub.add_parser(
@@ -117,6 +121,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=80,
         help="Number of replicates for each candidate design",
     )
+    _add_modality_preset_arguments(protocol_parser)
     protocol_parser.set_defaults(handler=_cmd_protocol)
 
     optimize_parser = sub.add_parser(
@@ -158,6 +163,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional candidate interim cadences",
     )
+    _add_modality_preset_arguments(optimize_parser)
     optimize_parser.set_defaults(handler=_cmd_optimize)
 
     voi_parser = sub.add_parser(
@@ -187,6 +193,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional patient expansions over baseline total_n",
     )
+    _add_modality_preset_arguments(voi_parser)
     voi_parser.set_defaults(handler=_cmd_voi)
 
     transport_parser = sub.add_parser(
@@ -252,6 +259,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional cache root override for refua-data",
     )
+    _add_modality_preset_arguments(from_data_parser)
     from_data_parser.set_defaults(handler=_cmd_from_data)
 
     evidence_parser = sub.add_parser(
@@ -348,6 +356,7 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="Output directory for all generated artifacts",
     )
+    _add_modality_preset_arguments(workup_parser)
     _add_admet_arguments(workup_parser)
     workup_parser.add_argument(
         "--admet-adjustments",
@@ -453,6 +462,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional JSON output path for integration summary",
     )
+    _add_modality_preset_arguments(integrate_refua_parser)
     integrate_refua_parser.add_argument(
         "--refua-ligand-id",
         default=None,
@@ -474,6 +484,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _cmd_init_config(args: argparse.Namespace) -> int:
     config = default_simulation_config()
+    config = _apply_modality_preset_for_args(config, args)
     dump_yaml(args.output, config_to_mapping(config))
     print(json.dumps({"output": str(args.output), "trial_id": config.trial_id}, indent=2))
     return 0
@@ -481,6 +492,7 @@ def _cmd_init_config(args: argparse.Namespace) -> int:
 
 def _cmd_simulate(args: argparse.Namespace) -> int:
     config = _load_config(args.config)
+    config = _apply_modality_preset_for_args(config, args)
     admet_info = _load_admet_for_args(args)
     refua_info = _load_refua_for_args(args)
 
@@ -560,6 +572,7 @@ def _cmd_rerun(args: argparse.Namespace) -> int:
         merged = apply_set_overrides(merged, list(args.set))
 
     config = config_from_mapping(merged)
+    config = _apply_modality_preset_for_args(config, args)
     result = simulate_trials(config)
     payload = trial_result_to_mapping(result)
     dump_json(args.output, payload)
@@ -569,6 +582,7 @@ def _cmd_rerun(args: argparse.Namespace) -> int:
 
 def _cmd_protocol(args: argparse.Namespace) -> int:
     config = _load_config_or_run(config_path=args.config, run_path=args.run)
+    config = _apply_modality_preset_for_args(config, args)
 
     recommendation = recommend_protocol(
         config,
@@ -604,6 +618,7 @@ def _cmd_protocol(args: argparse.Namespace) -> int:
 
 def _cmd_optimize(args: argparse.Namespace) -> int:
     config = _load_config_or_run(config_path=args.config, run_path=args.run)
+    config = _apply_modality_preset_for_args(config, args)
 
     payload = optimize_design_space(
         config,
@@ -635,6 +650,7 @@ def _cmd_optimize(args: argparse.Namespace) -> int:
 
 def _cmd_voi(args: argparse.Namespace) -> int:
     config = _load_config_or_run(config_path=args.config, run_path=args.run)
+    config = _apply_modality_preset_for_args(config, args)
 
     payload = estimate_value_of_information(
         config,
@@ -701,6 +717,7 @@ def _cmd_from_data(args: argparse.Namespace) -> int:
 
     config = default_simulation_config()
     config.population = pop_spec
+    config = _apply_modality_preset_for_args(config, args)
     dump_yaml(args.output, config_to_mapping(config))
     print(
         json.dumps(
@@ -783,6 +800,7 @@ def _cmd_workup(args: argparse.Namespace) -> int:
         raise ValueError("Provide both --reference and --target for transportability diagnostics")
 
     config = _load_config(args.config)
+    config = _apply_modality_preset_for_args(config, args)
     admet_info = _load_admet_for_args(args)
     refua_info = _load_refua_for_args(args)
 
@@ -941,6 +959,7 @@ def _cmd_workup(args: argparse.Namespace) -> int:
 
 def _cmd_integrate_refua(args: argparse.Namespace) -> int:
     config = _load_config(args.config)
+    config = _apply_modality_preset_for_args(config, args)
     payload = load_refua_payload(args.refua_json)
     policy = _refua_policy_from_args(args)
     adjusted, report = apply_refua_adjustments(config, payload, policy=policy)
@@ -1027,6 +1046,27 @@ def _add_refua_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_modality_preset_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--modality-preset",
+        choices=list_modality_presets(),
+        default=None,
+        help="Optional shared modality preset (for example biologic-sc).",
+    )
+    parser.add_argument(
+        "--preset-dosing-interval-hours",
+        type=float,
+        default=None,
+        help="Optional dosing interval override (hours) when a modality preset is used.",
+    )
+    parser.add_argument(
+        "--preset-tmdd-strength",
+        type=float,
+        default=None,
+        help="Optional TMDD-strength override when a modality preset is used.",
+    )
+
+
 def _load_admet_for_args(args: argparse.Namespace) -> dict[str, Any] | None:
     if args.admet_json is None and args.admet_smiles is None:
         return None
@@ -1071,6 +1111,22 @@ def _refua_policy_from_args(args: argparse.Namespace) -> RefuaIntegrationPolicy:
     return RefuaIntegrationPolicy(
         preferred_ligand_id=str(preferred_ligand_id) if preferred_ligand_id else None,
         max_candidate_arms=max_candidate_arms,
+    )
+
+
+def _apply_modality_preset_for_args(config: Any, args: argparse.Namespace) -> Any:
+    preset = getattr(args, "modality_preset", None)
+    if preset is None:
+        return config
+    dosing_interval_raw = getattr(args, "preset_dosing_interval_hours", None)
+    tmdd_strength_raw = getattr(args, "preset_tmdd_strength", None)
+    return apply_modality_preset(
+        config,
+        preset=str(preset),
+        dosing_interval_hours=(
+            float(dosing_interval_raw) if dosing_interval_raw is not None else None
+        ),
+        tmdd_strength=float(tmdd_strength_raw) if tmdd_strength_raw is not None else None,
     )
 
 

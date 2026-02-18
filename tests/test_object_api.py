@@ -132,3 +132,19 @@ def test_object_api_biologics_mode_applies_pk_preset() -> None:
 
     run = study.simulate()
     assert 0.0 <= float(run.summary["power"]) <= 1.0
+
+
+def test_object_api_modality_preset_applies_shared_profile() -> None:
+    study = (
+        ClinicalStudy.default()
+        .trial(replicates=10, seed=4)
+        .modality_preset(
+            preset="biologic-iv",
+            dosing_interval_hours=336.0,
+            tmdd_strength=0.3,
+        )
+    )
+    config = study.config
+    assert config.pk_model.modality == "biologic"
+    assert config.pk_model.route == "iv"
+    assert float(config.pk_model.tmdd_strength) == 0.3

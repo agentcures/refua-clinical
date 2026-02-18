@@ -324,3 +324,44 @@ def test_cli_integrate_refua_generates_adjusted_config_and_summary(tmp_path: Pat
     summary = json.loads(output_summary_path.read_text(encoding="utf-8"))
     assert summary["summary"]["selected_ligand_id"] == "lead_a"
     assert "management" in summary
+
+
+def test_cli_simulate_with_modality_preset(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    run_path = tmp_path / "run_biologic.json"
+
+    rc = main(["init-config", "--output", str(config_path)])
+    assert rc == 0
+
+    config_text = config_path.read_text(encoding="utf-8")
+    config_path.write_text(
+        config_text.replace("replicates: 250", "replicates: 12"),
+        encoding="utf-8",
+    )
+
+    rc = main(
+        [
+            "simulate",
+            "--config",
+            str(config_path),
+            "--modality-preset",
+            "biologic-sc",
+            "--preset-dosing-interval-hours",
+            "336",
+            "--preset-tmdd-strength",
+            "0.4",
+            "--output",
+            str(run_path),
+        ]
+    )
+    assert rc == 0
+
+    run_payload = json.loads(run_path.read_text(encoding="utf-8"))
+    pk_model = run_payload["config"]["pk_model"]
+    assert pk_model["modality"] == "biologic"
+    assert pk_model["route"] == "sc"
+    assert float(pk_model["tmdd_strength"]) == 0.4
+
+    treatment_arms = [arm for arm in run_payload["config"]["arms"] if not bool(arm["is_control"])]
+    assert treatment_arms
+    assert all(float(arm["dosing_interval_hours"]) == 336.0 for arm in treatment_arms)

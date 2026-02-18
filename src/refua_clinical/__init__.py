@@ -8,6 +8,7 @@ import tomllib
 from importlib.metadata import version as _distribution_version
 from pathlib import Path
 
+from .modality import apply_modality_preset, list_modality_presets
 from .models import (
     AdaptiveDesignSpec,
     ArmSpec,
@@ -95,5 +96,7 @@ __all__ = [
     "TrialSimulationResult",
     "VirtualPopulation",
     "VirtualPopulationSpec",
+    "apply_modality_preset",
+    "list_modality_presets",
     "__version__",
 ]
