@@ -1,3 +1,5 @@
+import pytest
+
 from refua_clinical.models import default_simulation_config
 from refua_clinical.refua_bridge import (
     RefuaIntegrationPolicy,
@@ -123,6 +125,32 @@ def test_extract_admet_profile_from_payload_honors_preferred_ligand() -> None:
     )
     assert extracted is not None
     assert float(extracted["admet_score"]) == 0.43
+
+
+def test_summarize_refua_payload_reports_legacy_contract_keys() -> None:
+    payload = {
+        "ligand_admet": {
+            "legacy_ligand": {"admet_score": 0.55, "safety_score": 0.52},
+        },
+        "protein_properties": {"length": 1000.0},
+    }
+
+    summary = summarize_refua_payload(payload)
+    contract = summary["contract"]
+    assert contract["is_canonical"] is False
+    assert "ligand_admet" in contract["legacy_root_keys"]
+    assert "protein_properties" in contract["legacy_root_keys"]
+
+
+def test_summarize_refua_payload_strict_contract_rejects_legacy_payload() -> None:
+    payload = {
+        "ligand_admet": {
+            "legacy_ligand": {"admet_score": 0.55, "safety_score": 0.52},
+        }
+    }
+
+    with pytest.raises(ValueError, match="strict contract validation"):
+        summarize_refua_payload(payload, strict_contract=True)
 
 
 def test_apply_refua_adjustments_changes_multiple_model_dimensions() -> None:

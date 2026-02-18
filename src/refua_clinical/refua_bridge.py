@@ -48,6 +48,26 @@ _SAFETY_ENDPOINTS = (
     "Tox21_SR_p53",
 )
 
+_LEGACY_ROOT_KEY_HINTS: dict[str, str] = {
+    "ligand_rdkit": "Use 'ligands[].rdkit' for per-ligand chemistry descriptors.",
+    "ligand_admet": "Use 'ligands[].admet' for per-ligand ADMET profiles.",
+    "ligand_affinity": "Use 'ligands[].affinity' for per-ligand affinity signals.",
+    "ligand_structure": "Use 'ligands[].structure' for per-ligand structure metrics.",
+    "affinity": "Use 'ligands[].affinity' instead of root-level fallback affinity.",
+    "structure": "Use 'ligands[].structure' instead of root-level fallback structure.",
+    "admet": "Use 'ligands[].admet' instead of root-level fallback ADMET.",
+    "rdkit": "Use 'ligands[].rdkit' instead of root-level fallback RDKit properties.",
+    "protein_properties": "Use 'target_properties' for target-level property maps.",
+}
+_LEGACY_LIGAND_KEY_HINTS: dict[str, str] = {
+    "id": "Use 'ligand_id' for ligand identifiers.",
+    "chain_id": "Use 'ligand_id' for ligand identifiers.",
+    "ligand_rdkit": "Use 'rdkit' for ligand descriptor blocks.",
+    "properties": "Use 'rdkit' for ligand descriptor blocks.",
+    "ligand_admet": "Use 'admet' for ligand ADMET payloads.",
+    "admet_profile": "Use 'admet' for ligand ADMET payloads.",
+}
+
 
 @dataclass(slots=True)
 class RefuaIntegrationPolicy:
@@ -62,6 +82,7 @@ class RefuaIntegrationPolicy:
     include_target_adjustments: bool = True
     include_candidate_arms: bool = True
     max_candidate_arms: int = 4
+    strict_contract: bool = False
 
 
 def load_refua_payload(path: str | Path) -> dict[str, Any]:
@@ -70,13 +91,95 @@ def load_refua_payload(path: str | Path) -> dict[str, Any]:
     return dict(payload)
 
 
+def assess_refua_payload_contract(payload: dict[str, Any]) -> dict[str, Any]:
+    """Assess whether a payload matches the canonical Refua handoff contract."""
+    legacy_root_keys = sorted(
+        key for key in _LEGACY_ROOT_KEY_HINTS if key in payload
+    )
+
+    legacy_ligand_keys: set[str] = set()
+    missing_ligand_id_count = 0
+    invalid_ligand_entries = 0
+
+    ligands_raw = payload.get("ligands")
+    if isinstance(ligands_raw, list):
+        ligand_count = len(ligands_raw)
+        for raw in ligands_raw:
+            if not isinstance(raw, dict):
+                invalid_ligand_entries += 1
+                continue
+            if _read_str(raw, "ligand_id") is None:
+                missing_ligand_id_count += 1
+            for key in _LEGACY_LIGAND_KEY_HINTS:
+                if key in raw:
+                    legacy_ligand_keys.add(key)
+    else:
+        ligand_count = 0
+
+    warnings: list[str] = []
+    if not isinstance(ligands_raw, list):
+        warnings.append("Missing canonical 'ligands' array.")
+
+    for key in legacy_root_keys:
+        warnings.append(f"Legacy root key '{key}' detected. {_LEGACY_ROOT_KEY_HINTS[key]}")
+    for key in sorted(legacy_ligand_keys):
+        warnings.append(f"Legacy ligand key '{key}' detected. {_LEGACY_LIGAND_KEY_HINTS[key]}")
+
+    if missing_ligand_id_count:
+        warnings.append(
+            f"{missing_ligand_id_count} ligand entries are missing required 'ligand_id'."
+        )
+    if invalid_ligand_entries:
+        warnings.append(
+            f"{invalid_ligand_entries} ligand entries are not objects."
+        )
+
+    is_canonical = (
+        isinstance(ligands_raw, list)
+        and not legacy_root_keys
+        and not legacy_ligand_keys
+        and missing_ligand_id_count == 0
+        and invalid_ligand_entries == 0
+    )
+
+    return {
+        "schema": "refua_payload.v1",
+        "is_canonical": is_canonical,
+        "ligand_count": ligand_count,
+        "legacy_root_keys": legacy_root_keys,
+        "legacy_ligand_keys": sorted(legacy_ligand_keys),
+        "missing_ligand_id_count": missing_ligand_id_count,
+        "invalid_ligand_entries": invalid_ligand_entries,
+        "warnings": warnings,
+    }
+
+
+def _enforce_contract(
+    payload: dict[str, Any],
+    *,
+    strict_contract: bool,
+) -> dict[str, Any]:
+    contract = assess_refua_payload_contract(payload)
+    if strict_contract and not bool(contract.get("is_canonical", False)):
+        warnings = contract.get("warnings")
+        reason = "; ".join(warnings[:4]) if isinstance(warnings, list) and warnings else ""
+        suffix = f" {reason}" if reason else ""
+        raise ValueError(f"Refua payload failed strict contract validation.{suffix}")
+    return contract
+
+
 def extract_admet_profile_from_refua_payload(
     payload: dict[str, Any],
     *,
     preferred_ligand_id: str | None = None,
+    strict_contract: bool = False,
 ) -> dict[str, Any] | None:
     """Return the selected ligand ADMET profile from a Refua payload."""
-    summary = summarize_refua_payload(payload, preferred_ligand_id=preferred_ligand_id)
+    summary = summarize_refua_payload(
+        payload,
+        preferred_ligand_id=preferred_ligand_id,
+        strict_contract=strict_contract,
+    )
     selected = summary.get("selected_candidate")
     if not isinstance(selected, dict):
         return None
@@ -90,8 +193,10 @@ def summarize_refua_payload(
     payload: dict[str, Any],
     *,
     preferred_ligand_id: str | None = None,
+    strict_contract: bool = False,
 ) -> dict[str, Any]:
     """Summarize candidate ligands and select a default candidate."""
+    contract = _enforce_contract(payload, strict_contract=strict_contract)
     candidates = _collect_ligand_candidates(payload)
     ranked = sorted(
         (_candidate_summary(candidate) for candidate in candidates),
@@ -118,6 +223,7 @@ def summarize_refua_payload(
         target_properties = _mapping(payload.get("protein_properties"))
 
     return {
+        "contract": contract,
         "candidate_count": len(ranked),
         "candidate_rankings": ranked,
         "selected_ligand_id": selected.get("ligand_id") if selected else None,
@@ -137,6 +243,7 @@ def apply_refua_adjustments(
     summary = summarize_refua_payload(
         payload,
         preferred_ligand_id=integration_policy.preferred_ligand_id,
+        strict_contract=integration_policy.strict_contract,
     )
     selected = summary.get("selected_candidate")
     selected_candidate = _mapping(selected)

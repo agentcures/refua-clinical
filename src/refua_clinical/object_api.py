@@ -476,6 +476,7 @@ class ClinicalStudy:
         apply: bool = True,
         ligand_id: str | None = None,
         max_candidate_arms: int = 4,
+        strict_contract: bool = False,
     ) -> ClinicalStudy:
         payload = (
             dict(payload_or_path)
@@ -485,6 +486,7 @@ class ClinicalStudy:
         policy = RefuaIntegrationPolicy(
             preferred_ligand_id=ligand_id,
             max_candidate_arms=max(1, int(max_candidate_arms)),
+            strict_contract=bool(strict_contract),
         )
         adjustments = None
         summary = None

@@ -474,6 +474,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=4,
         help="Maximum number of Refua candidate treatment arms to build.",
     )
+    integrate_refua_parser.add_argument(
+        "--refua-strict-contract",
+        action="store_true",
+        help="Require canonical Refua payload schema keys and reject legacy aliases.",
+    )
     integrate_refua_parser.set_defaults(handler=_cmd_integrate_refua)
 
     refs_parser = sub.add_parser("research", help="Print research references used by this package")
@@ -1044,6 +1049,11 @@ def _add_refua_arguments(parser: argparse.ArgumentParser) -> None:
         default=4,
         help="Maximum number of candidate treatment arms generated from Refua ligands.",
     )
+    parser.add_argument(
+        "--refua-strict-contract",
+        action="store_true",
+        help="Require canonical Refua payload schema keys and reject legacy aliases.",
+    )
 
 
 def _add_modality_preset_arguments(parser: argparse.ArgumentParser) -> None:
@@ -1093,10 +1103,16 @@ def _load_refua_for_args(args: argparse.Namespace) -> dict[str, Any] | None:
 
     payload = load_refua_payload(payload_path)
     preferred_ligand_id = getattr(args, "refua_ligand_id", None)
-    summary = summarize_refua_payload(payload, preferred_ligand_id=preferred_ligand_id)
+    strict_contract = bool(getattr(args, "refua_strict_contract", False))
+    summary = summarize_refua_payload(
+        payload,
+        preferred_ligand_id=preferred_ligand_id,
+        strict_contract=strict_contract,
+    )
     selected_admet = extract_admet_profile_from_refua_payload(
         payload,
         preferred_ligand_id=preferred_ligand_id,
+        strict_contract=strict_contract,
     )
     return {
         "payload": payload,
@@ -1111,6 +1127,7 @@ def _refua_policy_from_args(args: argparse.Namespace) -> RefuaIntegrationPolicy:
     return RefuaIntegrationPolicy(
         preferred_ligand_id=str(preferred_ligand_id) if preferred_ligand_id else None,
         max_candidate_arms=max_candidate_arms,
+        strict_contract=bool(getattr(args, "refua_strict_contract", False)),
     )
 
 

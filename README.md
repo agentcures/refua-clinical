@@ -84,6 +84,17 @@ refua-clinical simulate \
   --output artifacts/run_refua.json
 ```
 
+Enforce canonical Refua handoff keys (reject legacy aliases/fallback-only payloads):
+
+```bash
+refua-clinical simulate \
+  --config examples/default_config.yaml \
+  --refua-json examples/refua_integration_payload.json \
+  --refua-apply \
+  --refua-strict-contract \
+  --output artifacts/run_refua_strict.json
+```
+
 Run using a shared biologics preset from CLI:
 
 ```bash
@@ -262,7 +273,12 @@ payload = {
 study = (
     ClinicalStudy.default()
     .trial(trial_id="refua-bridge-demo", replicates=80)
-    .refua_payload(payload, apply=True, max_candidate_arms=3)
+    .refua_payload(
+        payload,
+        apply=True,
+        max_candidate_arms=3,
+        strict_contract=True,
+    )
 )
 run = study.simulate()
 workup = run.workup(
