@@ -4,9 +4,9 @@ This package now exposes an object-oriented API centered on ``ClinicalStudy``.
 Legacy function-based top-level exports were removed.
 """
 
+import tomllib
 from importlib.metadata import version as _distribution_version
 from pathlib import Path
-import tomllib
 
 from .models import (
     AdaptiveDesignSpec,
@@ -18,11 +18,13 @@ from .models import (
     EstimandSpec,
     ExternalControlSpec,
     HeterogeneitySpec,
+    ModalityKind,
     OperationalCostSpec,
     PDModelSpec,
     PKModelSpec,
     ProtocolRecommendation,
     ReplicateResult,
+    RouteKind,
     SimulationConfig,
     StoppingSpec,
     TrialSimulationResult,
@@ -80,12 +82,14 @@ __all__ = [
     "EstimandSpec",
     "ExternalControlSpec",
     "HeterogeneitySpec",
+    "ModalityKind",
     "OperationalCostSpec",
     "PDModelSpec",
     "PKModelSpec",
     "ProtocolRecommendation",
     "RefuaIntegrationPolicy",
     "ReplicateResult",
+    "RouteKind",
     "SimulationConfig",
     "StoppingSpec",
     "TrialSimulationResult",

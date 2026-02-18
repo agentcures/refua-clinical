@@ -143,13 +143,23 @@ def apply_refua_adjustments(
 
     working = config
     module_adjustments: dict[str, Any] = {}
+    is_biologic_mode = str(working.pk_model.modality).strip().lower() == "biologic"
+    allow_small_molecule_adjustments = not is_biologic_mode
     selected_admet = _mapping(selected_candidate.get("admet_profile"))
-    if integration_policy.include_admet_adjustments and selected_admet:
+    if (
+        integration_policy.include_admet_adjustments
+        and selected_admet
+        and allow_small_molecule_adjustments
+    ):
         working, admet_adjustments = apply_admet_adjustments(working, selected_admet)
         module_adjustments["admet_base"] = admet_adjustments
 
     payload_map = config_to_mapping(working)
-    if integration_policy.include_endpoint_admet_adjustments and selected_admet:
+    if (
+        integration_policy.include_endpoint_admet_adjustments
+        and selected_admet
+        and allow_small_molecule_adjustments
+    ):
         endpoint_update = _apply_endpoint_admet_adjustments(payload_map, selected_admet)
         if endpoint_update:
             module_adjustments["admet_endpoints"] = endpoint_update
@@ -167,7 +177,11 @@ def apply_refua_adjustments(
             module_adjustments["structure_confidence"] = structure_update
 
     selected_rdkit = _mapping(selected_candidate.get("rdkit"))
-    if integration_policy.include_rdkit_adjustments and selected_rdkit:
+    if (
+        integration_policy.include_rdkit_adjustments
+        and selected_rdkit
+        and allow_small_molecule_adjustments
+    ):
         rdkit_update = _apply_rdkit_adjustments(payload_map, selected_rdkit)
         if rdkit_update:
             module_adjustments["rdkit"] = rdkit_update
@@ -186,6 +200,12 @@ def apply_refua_adjustments(
         )
         if arm_update:
             module_adjustments["candidate_arms"] = arm_update
+
+    if is_biologic_mode:
+        module_adjustments["biologic_mode"] = {
+            "admet_adjustments_skipped": True,
+            "rdkit_adjustments_skipped": True,
+        }
 
     adjusted = config_from_mapping(payload_map)
     management = _build_management_summary(summary, module_adjustments)

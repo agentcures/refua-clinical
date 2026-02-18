@@ -7,6 +7,8 @@ from typing import Any, Literal
 
 DistributionKind = Literal["normal", "lognormal", "beta", "uniform", "categorical"]
 EndpointKind = Literal["continuous", "binary"]
+ModalityKind = Literal["small_molecule", "biologic"]
+RouteKind = Literal["oral", "iv", "sc"]
 EstimandStrategy = Literal[
     "treatment_policy",
     "hypothetical",
@@ -32,6 +34,8 @@ class VirtualPopulationSpec:
 
 @dataclass(slots=True)
 class PKModelSpec:
+    modality: ModalityKind = "small_molecule"
+    route: RouteKind = "oral"
     bioavailability: float = 1.0
     ka_per_hour: float = 0.9
     cl_l_per_hour: float = 9.5
@@ -41,6 +45,8 @@ class PKModelSpec:
     residual_prop: float = 0.12
     covariate_effect_weight: float = 0.20
     covariate_effect_egfr: float = 0.35
+    tmdd_strength: float = 0.0
+    tmdd_cavg_ref: float = 10.0
 
 
 @dataclass(slots=True)
@@ -64,6 +70,7 @@ class ArmSpec:
     dose_mg: float
     schedule_per_day: int = 1
     is_control: bool = False
+    dosing_interval_hours: float | None = None
 
 
 @dataclass(slots=True)

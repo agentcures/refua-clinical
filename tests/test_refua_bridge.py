@@ -142,3 +142,21 @@ def test_apply_refua_adjustments_changes_multiple_model_dimensions() -> None:
     management = report["management"]
     assert 0.0 <= float(management["readiness_index"]) <= 100.0
     assert management["recommended_actions"]
+
+
+def test_apply_refua_adjustments_in_biologic_mode_skips_small_molecule_adjustments() -> None:
+    config = default_simulation_config()
+    config.pk_model.modality = "biologic"
+    config.pk_model.route = "sc"
+
+    adjusted, report = apply_refua_adjustments(
+        config,
+        _payload(),
+        policy=RefuaIntegrationPolicy(max_candidate_arms=2),
+    )
+
+    assert adjusted.pk_model.modality == "biologic"
+    assert "admet_base" not in report["adjustments"]
+    assert "admet_endpoints" not in report["adjustments"]
+    assert "rdkit" not in report["adjustments"]
+    assert report["adjustments"]["biologic_mode"]["admet_adjustments_skipped"] is True

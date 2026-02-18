@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from .admet_integration import (
     apply_admet_adjustments,
@@ -21,13 +21,19 @@ from .io import (
     dump_yaml,
     load_mapping,
 )
-from .models import ProtocolRecommendation, SimulationConfig, default_simulation_config
+from .models import ProtocolRecommendation, RouteKind, SimulationConfig, default_simulation_config
 from .optimization import optimization_to_markdown, optimize_design_space
 from .protocol import recommend_protocol, render_protocol_markdown
 from .refua_bridge import RefuaIntegrationPolicy, apply_refua_adjustments, load_refua_payload
 from .transportability import assess_transportability
 from .trial import TrialSimulationResult, simulate_trials, trial_result_to_mapping
 from .voi import estimate_value_of_information, voi_to_markdown
+
+_BIOLOGICS_ROUTE_PRESETS: dict[str, tuple[float, float]] = {
+    "iv": (1.0, 4.0),
+    "sc": (0.65, 0.03),
+    "oral": (0.10, 0.02),
+}
 
 
 @dataclass(slots=True)
@@ -393,6 +399,45 @@ class ClinicalStudy:
             self._config.replicates = int(replicates)
         return self
 
+    def biologics_mode(
+        self,
+        *,
+        route: str = "sc",
+        dosing_interval_hours: float = 336.0,
+        tmdd_strength: float = 0.35,
+    ) -> ClinicalStudy:
+        """Apply a biologics-oriented PK preset and optional interval dosing."""
+        normalized_route = str(route).strip().lower()
+        route_preset = _BIOLOGICS_ROUTE_PRESETS.get(normalized_route)
+        if route_preset is None:
+            raise ValueError("route must be one of: oral, iv, sc")
+        bioavailability, ka_per_hour = route_preset
+
+        self._config.pk_model.modality = "biologic"
+        self._config.pk_model.route = cast(RouteKind, normalized_route)
+        self._config.pk_model.bioavailability = float(bioavailability)
+        self._config.pk_model.ka_per_hour = float(ka_per_hour)
+
+        self._config.pk_model.cl_l_per_hour = 0.25
+        self._config.pk_model.v_l = 6.0
+        self._config.pk_model.omega_cl = 0.20
+        self._config.pk_model.omega_v = 0.18
+        self._config.pk_model.covariate_effect_weight = 0.12
+        self._config.pk_model.covariate_effect_egfr = 0.08
+        self._config.pk_model.tmdd_strength = max(float(tmdd_strength), 0.0)
+        self._config.pk_model.tmdd_cavg_ref = 15.0
+
+        # Biologics often have slower readout kinetics than small molecules.
+        self._config.endpoint.assessment_day = max(int(self._config.endpoint.assessment_day), 112)
+
+        interval = max(float(dosing_interval_hours), 12.0)
+        for arm in self._config.arms:
+            if arm.is_control or arm.dose_mg <= 0.0:
+                continue
+            arm.schedule_per_day = 1
+            arm.dosing_interval_hours = interval
+        return self
+
     def set(self, path: str, value: Any) -> ClinicalStudy:
         updated = apply_set_overrides(config_to_mapping(self._config), [f"{path}={value}"])
         self._config = config_from_mapping(updated)
@@ -520,4 +565,3 @@ class ClinicalStudy:
         else:
             dump_yaml(out, payload)
         return self
-

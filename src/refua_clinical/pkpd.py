@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Protocol
 
 import numpy as np
 import pandas as pd
@@ -21,6 +22,144 @@ class PKMetrics:
     v: np.ndarray
 
 
+class _ModalityProfile(Protocol):
+    def effective_bioavailability(self, *, route: str, base: float) -> float: ...
+
+    def effective_clearance(
+        self,
+        *,
+        cl: np.ndarray,
+        total_dose: float,
+        duration_days: int,
+        bioavailability: float,
+        pk_model: PKModelSpec,
+    ) -> np.ndarray: ...
+
+    def limit_ka(self, ka_per_hour: float) -> float: ...
+
+
+@dataclass(frozen=True, slots=True)
+class _SmallMoleculeProfile:
+    def effective_bioavailability(self, *, route: str, base: float) -> float:
+        if route == "iv":
+            return 1.0
+        return float(base)
+
+    def effective_clearance(
+        self,
+        *,
+        cl: np.ndarray,
+        total_dose: float,
+        duration_days: int,
+        bioavailability: float,
+        pk_model: PKModelSpec,
+    ) -> np.ndarray:
+        return cl
+
+    def limit_ka(self, ka_per_hour: float) -> float:
+        return max(float(ka_per_hour), 1e-6)
+
+
+@dataclass(frozen=True, slots=True)
+class _BiologicProfile:
+    def effective_bioavailability(self, *, route: str, base: float) -> float:
+        if route == "iv":
+            return 1.0
+        if route == "sc":
+            return float(np.clip(base, 0.20, 1.0))
+        return float(np.clip(base, 0.02, 0.80))
+
+    def effective_clearance(
+        self,
+        *,
+        cl: np.ndarray,
+        total_dose: float,
+        duration_days: int,
+        bioavailability: float,
+        pk_model: PKModelSpec,
+    ) -> np.ndarray:
+        cavg_linear = bioavailability * total_dose / (
+            max(int(duration_days), 1) * np.clip(cl, 1e-6, None)
+        )
+        tmdd_strength = max(float(pk_model.tmdd_strength), 0.0)
+        tmdd_cavg_ref = max(float(pk_model.tmdd_cavg_ref), 1e-6)
+        tmdd_multiplier = 1.0 + tmdd_strength * np.exp(-cavg_linear / tmdd_cavg_ref)
+        return cl * tmdd_multiplier
+
+    def limit_ka(self, ka_per_hour: float) -> float:
+        return float(np.clip(float(ka_per_hour), 1e-4, 0.5))
+
+
+class _RouteProfile(Protocol):
+    def concentration_metrics(
+        self,
+        *,
+        arm: ArmSpec,
+        v: np.ndarray,
+        k: np.ndarray,
+        tau: float,
+        bioavailability: float,
+        ka_per_hour: float,
+        modality: _ModalityProfile,
+    ) -> tuple[np.ndarray, np.ndarray]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class _IVRouteProfile:
+    def concentration_metrics(
+        self,
+        *,
+        arm: ArmSpec,
+        v: np.ndarray,
+        k: np.ndarray,
+        tau: float,
+        bioavailability: float,
+        ka_per_hour: float,
+        modality: _ModalityProfile,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        acc_elim = 1.0 / np.clip(1.0 - np.exp(-k * tau), 1e-6, None)
+        cmax = arm.dose_mg / np.clip(v, 1e-6, None) * acc_elim
+        ctrough = cmax * np.exp(-k * tau)
+        return cmax, ctrough
+
+
+@dataclass(frozen=True, slots=True)
+class _FirstOrderAbsorptionRouteProfile:
+    def concentration_metrics(
+        self,
+        *,
+        arm: ArmSpec,
+        v: np.ndarray,
+        k: np.ndarray,
+        tau: float,
+        bioavailability: float,
+        ka_per_hour: float,
+        modality: _ModalityProfile,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        ka = modality.limit_ka(ka_per_hour)
+        delta = np.clip(ka - k, 1e-6, None)
+        term = bioavailability * arm.dose_mg * ka / (np.clip(v, 1e-6, None) * delta)
+        acc_elim = 1.0 / np.clip(1.0 - np.exp(-k * tau), 1e-6, None)
+        acc_abs = 1.0 / np.clip(1.0 - np.exp(-ka * tau), 1e-6, None)
+
+        ctrough = term * (np.exp(-k * tau) * acc_elim - np.exp(-ka * tau) * acc_abs)
+        tmax = np.log(np.clip(ka / k, 1.01, None)) / delta
+        tmax = np.clip(tmax, 0.0, tau)
+        cmax = term * (np.exp(-k * tmax) * acc_elim - np.exp(-ka * tmax) * acc_abs)
+        return cmax, ctrough
+
+
+_MODALITY_PROFILES: dict[str, _ModalityProfile] = {
+    "small_molecule": _SmallMoleculeProfile(),
+    "biologic": _BiologicProfile(),
+}
+_ROUTE_PROFILES: dict[str, _RouteProfile] = {
+    "oral": _FirstOrderAbsorptionRouteProfile(),
+    "sc": _FirstOrderAbsorptionRouteProfile(),
+    "iv": _IVRouteProfile(),
+}
+
+
 def simulate_pk_metrics(
     covariates: pd.DataFrame,
     *,
@@ -33,7 +172,8 @@ def simulate_pk_metrics(
     if count < 1:
         raise ValueError("Need at least one patient for PK simulation")
 
-    if arm.dose_mg <= 0.0 or arm.schedule_per_day <= 0:
+    has_interval = arm.dosing_interval_hours is not None and float(arm.dosing_interval_hours) > 0.0
+    if arm.dose_mg <= 0.0 or (arm.schedule_per_day <= 0 and not has_interval):
         zeros = np.zeros(count, dtype=float)
         cl = _individualized_cl(covariates, pk_model, rng)
         v = _individualized_v(covariates, pk_model, rng)
@@ -41,31 +181,70 @@ def simulate_pk_metrics(
 
     cl = _individualized_cl(covariates, pk_model, rng)
     v = _individualized_v(covariates, pk_model, rng)
-
-    daily_dose = arm.dose_mg * float(arm.schedule_per_day)
     duration_days = max(duration_days, 1)
-    auc = pk_model.bioavailability * daily_dose * duration_days / np.clip(cl, 1e-6, None)
+
+    modality_key = str(pk_model.modality).strip().lower()
+    route_key = str(pk_model.route).strip().lower()
+    modality = _resolve_modality_profile(modality_key)
+    route = _resolve_route_profile(route_key)
+
+    tau, total_dose = _dosing_schedule(arm=arm, duration_days=duration_days)
+    bioavailability = modality.effective_bioavailability(
+        route=route_key,
+        base=float(pk_model.bioavailability),
+    )
+    cl_effective = modality.effective_clearance(
+        cl=cl,
+        total_dose=total_dose,
+        duration_days=duration_days,
+        bioavailability=bioavailability,
+        pk_model=pk_model,
+    )
+
+    auc = bioavailability * total_dose / np.clip(cl_effective, 1e-6, None)
     cavg = auc / duration_days
 
-    tau = 24.0 / float(arm.schedule_per_day)
-    k = np.clip(cl / np.clip(v, 1e-6, None), 1e-6, None)
-    ka = max(pk_model.ka_per_hour, 1e-6)
-    delta = np.clip(ka - k, 1e-6, None)
-
-    term = pk_model.bioavailability * arm.dose_mg * ka / (np.clip(v, 1e-6, None) * delta)
-    acc_elim = 1.0 / np.clip(1.0 - np.exp(-k * tau), 1e-6, None)
-    acc_abs = 1.0 / np.clip(1.0 - np.exp(-ka * tau), 1e-6, None)
-
-    ctrough = term * (np.exp(-k * tau) * acc_elim - np.exp(-ka * tau) * acc_abs)
-
-    tmax = np.log(np.clip(ka / k, 1.01, None)) / delta
-    tmax = np.clip(tmax, 0.0, tau)
-    cmax = term * (np.exp(-k * tmax) * acc_elim - np.exp(-ka * tmax) * acc_abs)
+    k = np.clip(cl_effective / np.clip(v, 1e-6, None), 1e-6, None)
+    cmax, ctrough = route.concentration_metrics(
+        arm=arm,
+        v=v,
+        k=k,
+        tau=tau,
+        bioavailability=bioavailability,
+        ka_per_hour=float(pk_model.ka_per_hour),
+        modality=modality,
+    )
 
     cmax = np.maximum(cmax, 0.0)
     ctrough = np.maximum(ctrough, 0.0)
 
-    return PKMetrics(auc=auc, cavg=cavg, cmax=cmax, ctrough=ctrough, cl=cl, v=v)
+    return PKMetrics(auc=auc, cavg=cavg, cmax=cmax, ctrough=ctrough, cl=cl_effective, v=v)
+
+
+def _dosing_schedule(*, arm: ArmSpec, duration_days: int) -> tuple[float, float]:
+    if arm.dosing_interval_hours is not None and float(arm.dosing_interval_hours) > 0.0:
+        tau = max(float(arm.dosing_interval_hours), 1e-6)
+        administrations = max(int(np.ceil(duration_days * 24.0 / tau)), 1)
+    else:
+        schedule = max(int(arm.schedule_per_day), 1)
+        tau = 24.0 / float(schedule)
+        administrations = max(int(duration_days * schedule), 1)
+    total_dose = float(arm.dose_mg) * float(administrations)
+    return tau, total_dose
+
+
+def _resolve_modality_profile(raw: str) -> _ModalityProfile:
+    profile = _MODALITY_PROFILES.get(raw)
+    if profile is None:
+        raise ValueError("pk_model.modality must be 'small_molecule' or 'biologic'")
+    return profile
+
+
+def _resolve_route_profile(raw: str) -> _RouteProfile:
+    profile = _ROUTE_PROFILES.get(raw)
+    if profile is None:
+        raise ValueError("pk_model.route must be 'oral', 'iv', or 'sc'")
+    return profile
 
 
 def simulate_pd_outcomes(

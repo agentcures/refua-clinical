@@ -105,3 +105,30 @@ def test_object_api_end_to_end(tmp_path: Path) -> None:
     assert manifest_path.exists()
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert "run" in payload
+
+
+def test_object_api_biologics_mode_applies_pk_preset() -> None:
+    study = (
+        ClinicalStudy.default()
+        .trial(
+            trial_id="oo-biologic",
+            indication="Immunology",
+            phase="Phase II",
+            replicates=12,
+            seed=3,
+        )
+        .biologics_mode(route="sc", dosing_interval_hours=336.0, tmdd_strength=0.4)
+    )
+
+    config = study.config
+    assert config.pk_model.modality == "biologic"
+    assert config.pk_model.route == "sc"
+    assert float(config.pk_model.tmdd_strength) == 0.4
+    assert int(config.endpoint.assessment_day) >= 112
+
+    treatment_arms = [arm for arm in config.arms if not arm.is_control]
+    assert treatment_arms
+    assert all(float(arm.dosing_interval_hours or 0.0) == 336.0 for arm in treatment_arms)
+
+    run = study.simulate()
+    assert 0.0 <= float(run.summary["power"]) <= 1.0

@@ -109,9 +109,19 @@ def render_protocol_markdown(protocol: dict[str, Any]) -> str:
     lines.append("## Arms")
     for arm in design["arms"]:
         prefix = "Control" if arm["is_control"] else "Treatment"
+        interval_raw = arm.get("dosing_interval_hours")
+        if isinstance(interval_raw, int | float) and float(interval_raw) > 0.0:
+            interval_hours = float(interval_raw)
+            if abs(interval_hours % 24.0) <= 1e-6:
+                every_days = max(int(round(interval_hours / 24.0)), 1)
+                cadence = f"q{every_days}d"
+            else:
+                cadence = f"every {interval_hours:.1f}h"
+        else:
+            cadence = f"{arm['schedule_per_day']}x/day"
         lines.append(
             f"- {prefix}: {arm['label']} ({arm['arm_id']}), "
-            f"{arm['dose_mg']} mg, {arm['schedule_per_day']}x/day"
+            f"{arm['dose_mg']} mg, {cadence}"
         )
     lines.append("")
 

@@ -80,3 +80,48 @@ def test_pd_effect_is_higher_for_treatment_than_control() -> None:
     )
 
     assert float(high_pd["change"].mean()) > float(control_pd["change"].mean())
+
+
+def test_biologic_pk_supports_route_and_interval_dosing() -> None:
+    rng = np.random.default_rng(11)
+    covariates = pd.DataFrame(
+        {
+            "age": rng.normal(58, 9, size=260),
+            "weight": rng.normal(76, 11, size=260),
+            "egfr": rng.normal(82, 18, size=260),
+            "biomarker_z": rng.normal(0, 1, size=260),
+        }
+    )
+
+    sc_model = PKModelSpec(
+        modality="biologic",
+        route="sc",
+        bioavailability=0.65,
+        ka_per_hour=0.03,
+        cl_l_per_hour=0.25,
+        v_l=6.0,
+        tmdd_strength=0.35,
+        tmdd_cavg_ref=15.0,
+    )
+    iv_model = PKModelSpec(
+        modality="biologic",
+        route="iv",
+        bioavailability=1.0,
+        ka_per_hour=4.0,
+        cl_l_per_hour=0.25,
+        v_l=6.0,
+        tmdd_strength=0.35,
+        tmdd_cavg_ref=15.0,
+    )
+
+    q2w = ArmSpec("bio_q2w", "Biologic Q2W", 200.0, dosing_interval_hours=336.0)
+    q1w = ArmSpec("bio_q1w", "Biologic Q1W", 200.0, dosing_interval_hours=168.0)
+
+    sc_q2w = simulate_pk_metrics(covariates, arm=q2w, pk_model=sc_model, duration_days=84, rng=rng)
+    sc_q1w = simulate_pk_metrics(covariates, arm=q1w, pk_model=sc_model, duration_days=84, rng=rng)
+    iv_q2w = simulate_pk_metrics(covariates, arm=q2w, pk_model=iv_model, duration_days=84, rng=rng)
+
+    assert float(sc_q2w.auc.mean()) > 0.0
+    assert float(sc_q2w.cmax.mean()) > float(sc_q2w.ctrough.mean())
+    assert float(sc_q1w.cavg.mean()) > float(sc_q2w.cavg.mean())
+    assert float(iv_q2w.cmax.mean()) > float(sc_q2w.cmax.mean())

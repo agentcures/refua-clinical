@@ -22,9 +22,11 @@ from .models import (
     EstimandStrategy,
     ExternalControlSpec,
     HeterogeneitySpec,
+    ModalityKind,
     OperationalCostSpec,
     PDModelSpec,
     PKModelSpec,
+    RouteKind,
     SimulationConfig,
     StoppingSpec,
     VirtualPopulationSpec,
@@ -98,6 +100,7 @@ def config_from_mapping(data: dict[str, Any]) -> SimulationConfig:
     arms: list[ArmSpec] = []
     for raw in arms_raw:
         item = _mapping(raw)
+        dosing_interval_raw = item.get("dosing_interval_hours")
         arms.append(
             ArmSpec(
                 arm_id=_required_str(item, "arm_id"),
@@ -105,6 +108,9 @@ def config_from_mapping(data: dict[str, Any]) -> SimulationConfig:
                 dose_mg=float(item.get("dose_mg", 0.0)),
                 schedule_per_day=int(item.get("schedule_per_day", 1)),
                 is_control=bool(item.get("is_control", False)),
+                dosing_interval_hours=(
+                    float(dosing_interval_raw) if dosing_interval_raw is not None else None
+                ),
             )
         )
 
@@ -122,6 +128,10 @@ def config_from_mapping(data: dict[str, Any]) -> SimulationConfig:
     heterogeneity_raw = _mapping(data.get("heterogeneity"))
     costs_raw = _mapping(data.get("costs"))
 
+    pk_values = _coerce_numeric_fields(pk_raw, PKModelSpec())
+    pk_values["modality"] = _parse_modality_kind(str(pk_values.get("modality", "small_molecule")))
+    pk_values["route"] = _parse_route_kind(str(pk_values.get("route", "oral")))
+
     return SimulationConfig(
         trial_id=_required_str(data, "trial_id"),
         indication=_required_str(data, "indication"),
@@ -134,7 +144,7 @@ def config_from_mapping(data: dict[str, Any]) -> SimulationConfig:
             covariates=covariates,
             correlation=correlation,
         ),
-        pk_model=PKModelSpec(**_coerce_numeric_fields(pk_raw, PKModelSpec())),
+        pk_model=PKModelSpec(**pk_values),
         pd_model=PDModelSpec(**_coerce_numeric_fields(pd_raw, PDModelSpec())),
         endpoint=EndpointSpec(
             name=str(endpoint_raw.get("name", "change_from_baseline")),
@@ -285,8 +295,12 @@ def _coerce_numeric_fields(source: dict[str, Any], defaults: Any) -> dict[str, A
         raw = source.get(key, default_value)
         if isinstance(default_value, bool):
             result[key] = bool(raw)
+        elif isinstance(default_value, str):
+            result[key] = str(raw)
         elif isinstance(default_value, int):
             result[key] = int(raw)
+        elif default_value is None:
+            result[key] = raw
         else:
             result[key] = float(raw)
     return result
@@ -306,6 +320,20 @@ def _parse_endpoint_kind(raw: str) -> EndpointKind:
     if normalized not in {"continuous", "binary"}:
         raise ValueError("endpoint.kind must be either 'continuous' or 'binary'")
     return cast(EndpointKind, normalized)
+
+
+def _parse_modality_kind(raw: str) -> ModalityKind:
+    normalized = raw.strip().lower()
+    if normalized not in {"small_molecule", "biologic"}:
+        raise ValueError("pk_model.modality must be 'small_molecule' or 'biologic'")
+    return cast(ModalityKind, normalized)
+
+
+def _parse_route_kind(raw: str) -> RouteKind:
+    normalized = raw.strip().lower()
+    if normalized not in {"oral", "iv", "sc"}:
+        raise ValueError("pk_model.route must be 'oral', 'iv', or 'sc'")
+    return cast(RouteKind, normalized)
 
 
 def _parse_estimand_strategy(raw: str) -> EstimandStrategy:
