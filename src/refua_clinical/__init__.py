@@ -41,6 +41,7 @@ from .object_api import (
     ClinicalWorkup,
 )
 from .refua_bridge import RefuaIntegrationPolicy
+from .trial_management import ClinicalTrialManager, default_trial_store_path
 from .virtual_patients import VirtualPopulation
 
 
@@ -77,6 +78,7 @@ __all__ = [
     "ClinicalStudy",
     "ClinicalVOI",
     "ClinicalWorkup",
+    "ClinicalTrialManager",
     "CovariateSpec",
     "EndpointSpec",
     "EnrollmentSpec",
@@ -97,6 +99,7 @@ __all__ = [
     "VirtualPopulation",
     "VirtualPopulationSpec",
     "apply_modality_preset",
+    "default_trial_store_path",
     "list_modality_presets",
     "__version__",
 ]
