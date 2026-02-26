@@ -820,7 +820,9 @@ class ClinicalTrialManager:
         if "updated_at" not in payload:
             payload["updated_at"] = _utc_now_iso()
 
-        tmp_path = self._store_path.with_suffix(self._store_path.suffix + ".tmp")
+        tmp_path = self._store_path.with_name(
+            f"{self._store_path.name}.{uuid.uuid4().hex}.tmp"
+        )
         tmp_path.write_text(
             json.dumps(payload, ensure_ascii=True, indent=2) + "\n",
             encoding="utf-8",
