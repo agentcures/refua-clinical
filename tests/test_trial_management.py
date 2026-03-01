@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from datetime import UTC, datetime, timedelta
 
 from refua_clinical.trial_management import ClinicalTrialManager
 
@@ -114,3 +115,95 @@ def test_trial_manager_simulation_blends_observed_data(tmp_path: Path) -> None:
     trial = manager.get_trial("blend-demo")
     assert trial is not None
     assert len(trial["simulations"]) >= 1
+
+
+def test_trial_manager_clinops_operations(tmp_path: Path) -> None:
+    manager = ClinicalTrialManager(tmp_path / "trial_store.json")
+    manager.create_trial(trial_id="ops-demo", status="enrolling")
+
+    site = manager.upsert_site(
+        "ops-demo",
+        site_id="site-001",
+        name="Boston General",
+        country_id="US",
+        status="active",
+        target_enrollment=24,
+        metadata={"region": "NA"},
+    )
+    assert site["site"]["site_id"] == "site-001"
+
+    manager.record_screening(
+        "ops-demo",
+        site_id="site-001",
+        patient_id="pt-001",
+        status="screen_failed",
+        failure_reason="did_not_meet_inclusion",
+    )
+    manager.record_screening(
+        "ops-demo",
+        site_id="site-001",
+        patient_id="pt-002",
+        status="enrolled",
+        arm_id="control",
+        auto_enroll=True,
+        demographics={"age": 54},
+    )
+
+    overdue_due_at = (datetime.now(UTC) - timedelta(days=2)).isoformat()
+    opened = manager.add_query(
+        "ops-demo",
+        patient_id="pt-002",
+        site_id="site-001",
+        description="Missing week-4 lab panel",
+        status="open",
+        due_at=overdue_due_at,
+    )
+    assert opened["query"]["status"] == "open"
+
+    manager.record_monitoring_visit(
+        "ops-demo",
+        site_id="site-001",
+        visit_type="interim",
+        findings=["Source notes incomplete for one visit"],
+        action_items=["Retrain coordinator on source documentation"],
+        risk_score=0.82,
+    )
+    manager.record_deviation(
+        "ops-demo",
+        description="Visit window outside protocol limit",
+        site_id="site-001",
+        patient_id="pt-002",
+        severity="major",
+        status="open",
+    )
+    manager.record_safety_event(
+        "ops-demo",
+        patient_id="pt-002",
+        site_id="site-001",
+        event_term="grade_3_neutropenia",
+        seriousness="serious",
+        expected=False,
+    )
+    manager.upsert_milestone(
+        "ops-demo",
+        milestone_id="ms-lpi",
+        name="Last Patient In",
+        target_date=(datetime.now(UTC) - timedelta(days=1)).isoformat(),
+        status="at_risk",
+    )
+
+    snapshot = manager.operations_snapshot("ops-demo")
+    clinops = snapshot["clinops"]
+    assert clinops["site_count"] == 1
+    assert clinops["active_site_count"] == 1
+    assert clinops["screened_count"] == 2
+    assert clinops["screen_fail_count"] == 1
+    assert clinops["open_queries"] == 1
+    assert clinops["overdue_queries"] == 1
+    assert clinops["major_deviations"] == 1
+    assert clinops["serious_safety_events"] == 1
+    assert clinops["overdue_milestones"] == 1
+    assert clinops["at_risk_sites"][0]["site_id"] == "site-001"
+
+    sites = manager.list_sites("ops-demo")
+    assert sites["count"] == 1
