@@ -70,7 +70,9 @@ def estimate_value_of_information(
     }
 
 
-def _clone_for_n(config: SimulationConfig, total_n: int, replicates: int) -> SimulationConfig:
+def _clone_for_n(
+    config: SimulationConfig, total_n: int, replicates: int
+) -> SimulationConfig:
     payload = config_to_mapping(config)
     payload["enrollment"]["total_n"] = int(total_n)
     payload["replicates"] = int(replicates)
@@ -89,7 +91,8 @@ def _decision_utility(
     benefit = 100.0 * power + 1.8 * effect - 110.0 * max(safety - 0.30, 0.0)
     cost_penalty = (
         expected_n * config.costs.cost_per_patient
-        + config.costs.cost_per_interim * (expected_n / max(config.adaptive.interim_every, 1))
+        + config.costs.cost_per_interim
+        * (expected_n / max(config.adaptive.interim_every, 1))
     ) / 100_000.0
     return float(config.costs.utility_scale * benefit - cost_penalty)
 

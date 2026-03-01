@@ -93,9 +93,7 @@ def load_refua_payload(path: str | Path) -> dict[str, Any]:
 
 def assess_refua_payload_contract(payload: dict[str, Any]) -> dict[str, Any]:
     """Assess whether a payload matches the canonical Refua handoff contract."""
-    legacy_root_keys = sorted(
-        key for key in _LEGACY_ROOT_KEY_HINTS if key in payload
-    )
+    legacy_root_keys = sorted(key for key in _LEGACY_ROOT_KEY_HINTS if key in payload)
 
     legacy_ligand_keys: set[str] = set()
     missing_ligand_id_count = 0
@@ -121,18 +119,20 @@ def assess_refua_payload_contract(payload: dict[str, Any]) -> dict[str, Any]:
         warnings.append("Missing canonical 'ligands' array.")
 
     for key in legacy_root_keys:
-        warnings.append(f"Legacy root key '{key}' detected. {_LEGACY_ROOT_KEY_HINTS[key]}")
+        warnings.append(
+            f"Legacy root key '{key}' detected. {_LEGACY_ROOT_KEY_HINTS[key]}"
+        )
     for key in sorted(legacy_ligand_keys):
-        warnings.append(f"Legacy ligand key '{key}' detected. {_LEGACY_LIGAND_KEY_HINTS[key]}")
+        warnings.append(
+            f"Legacy ligand key '{key}' detected. {_LEGACY_LIGAND_KEY_HINTS[key]}"
+        )
 
     if missing_ligand_id_count:
         warnings.append(
             f"{missing_ligand_id_count} ligand entries are missing required 'ligand_id'."
         )
     if invalid_ligand_entries:
-        warnings.append(
-            f"{invalid_ligand_entries} ligand entries are not objects."
-        )
+        warnings.append(f"{invalid_ligand_entries} ligand entries are not objects.")
 
     is_canonical = (
         isinstance(ligands_raw, list)
@@ -162,7 +162,9 @@ def _enforce_contract(
     contract = assess_refua_payload_contract(payload)
     if strict_contract and not bool(contract.get("is_canonical", False)):
         warnings = contract.get("warnings")
-        reason = "; ".join(warnings[:4]) if isinstance(warnings, list) and warnings else ""
+        reason = (
+            "; ".join(warnings[:4]) if isinstance(warnings, list) and warnings else ""
+        )
         suffix = f" {reason}" if reason else ""
         raise ValueError(f"Refua payload failed strict contract validation.{suffix}")
     return contract
@@ -211,7 +213,8 @@ def summarize_refua_payload(
             (
                 item
                 for item in ranked
-                if str(item.get("ligand_id", "")).strip().lower() == preferred.strip().lower()
+                if str(item.get("ligand_id", "")).strip().lower()
+                == preferred.strip().lower()
             ),
             None,
         )
@@ -278,7 +281,10 @@ def apply_refua_adjustments(
             module_adjustments["affinity"] = affinity_update
 
     selected_structure = _mapping(selected_candidate.get("structure"))
-    if integration_policy.include_structure_confidence_adjustments and selected_structure:
+    if (
+        integration_policy.include_structure_confidence_adjustments
+        and selected_structure
+    ):
         structure_update = _apply_structure_adjustments(payload_map, selected_structure)
         if structure_update:
             module_adjustments["structure_confidence"] = structure_update
@@ -363,8 +369,12 @@ def _collect_ligand_candidates(payload: dict[str, Any]) -> list[dict[str, Any]]:
                 or item.get("admet_profile")
                 or candidate["admet_profile"]
             )
-            candidate["affinity"] = _mapping(item.get("affinity") or candidate["affinity"])
-            candidate["structure"] = _mapping(item.get("structure") or candidate["structure"])
+            candidate["affinity"] = _mapping(
+                item.get("affinity") or candidate["affinity"]
+            )
+            candidate["structure"] = _mapping(
+                item.get("structure") or candidate["structure"]
+            )
             smiles = _read_str(item, "smiles")
             if smiles is not None:
                 candidate["smiles"] = smiles
@@ -395,7 +405,9 @@ def _collect_ligand_candidates(payload: dict[str, Any]) -> list[dict[str, Any]]:
     fallback_rdkit = _mapping(payload.get("rdkit"))
     fallback_smiles = _read_str(payload, "smiles")
 
-    if not by_id and (fallback_affinity or fallback_structure or fallback_admet or fallback_rdkit):
+    if not by_id and (
+        fallback_affinity or fallback_structure or fallback_admet or fallback_rdkit
+    ):
         default_id = _normalize_ligand_id(
             _read_str(payload, "ligand_id")
             or _read_str(payload, "selected_ligand_id")
@@ -447,7 +459,9 @@ def _candidate_summary(candidate: dict[str, Any]) -> dict[str, Any]:
         if isinstance(admet_summary, dict) and "adme_score" in admet_summary
         else 0.5
     )
-    red_flags = admet_summary.get("red_flags", []) if isinstance(admet_summary, dict) else []
+    red_flags = (
+        admet_summary.get("red_flags", []) if isinstance(admet_summary, dict) else []
+    )
     red_flag_count = len(red_flags) if isinstance(red_flags, list) else 0
 
     binding_probability = _read_float(affinity, "binding_probability", default=0.5)
@@ -523,8 +537,12 @@ def _apply_endpoint_admet_adjustments(
 
     pk["ka_per_hour"] = float(pk["ka_per_hour"] * ka_factor)
     pk["cl_l_per_hour"] = float(pk["cl_l_per_hour"] * cl_factor)
-    pk["omega_cl"] = float(np.clip(pk["omega_cl"] * (1.0 + 0.55 * (1.0 - metabolism)), 0.08, 1.20))
-    pk["omega_v"] = float(np.clip(pk["omega_v"] * (1.0 + 0.25 * (1.0 - distribution)), 0.08, 1.20))
+    pk["omega_cl"] = float(
+        np.clip(pk["omega_cl"] * (1.0 + 0.55 * (1.0 - metabolism)), 0.08, 1.20)
+    )
+    pk["omega_v"] = float(
+        np.clip(pk["omega_v"] * (1.0 + 0.25 * (1.0 - distribution)), 0.08, 1.20)
+    )
 
     safety_shift = float(np.clip((0.65 - safety) * 1.2, -0.35, 1.25))
     pd["safety_intercept"] = float(pd["safety_intercept"] + safety_shift)
@@ -532,10 +550,18 @@ def _apply_endpoint_admet_adjustments(
     stopping_success_shift = float(np.clip((0.70 - safety) * 0.08, -0.01, 0.07))
     stopping_futility_shift = float(np.clip((0.70 - safety) * 0.15, 0.0, 0.20))
     stopping["success_posterior_threshold"] = float(
-        np.clip(stopping["success_posterior_threshold"] + stopping_success_shift, 0.90, 0.999)
+        np.clip(
+            stopping["success_posterior_threshold"] + stopping_success_shift,
+            0.90,
+            0.999,
+        )
     )
     stopping["futility_posterior_threshold"] = float(
-        np.clip(stopping["futility_posterior_threshold"] + stopping_futility_shift, 0.10, 0.70)
+        np.clip(
+            stopping["futility_posterior_threshold"] + stopping_futility_shift,
+            0.10,
+            0.70,
+        )
     )
 
     external_control["weight"] = float(
@@ -584,7 +610,9 @@ def _apply_affinity_adjustments(
 
     pd["ec50_auc"] = float(pd["ec50_auc"] * ec50_factor)
     pd["emax"] = float(pd["emax"] * emax_factor)
-    endpoint["target_difference"] = float(endpoint["target_difference"] * endpoint_factor)
+    endpoint["target_difference"] = float(
+        endpoint["target_difference"] * endpoint_factor
+    )
     endpoint["responder_threshold"] = float(
         max(endpoint["responder_threshold"], endpoint["target_difference"] + 2.0)
     )
@@ -659,7 +687,9 @@ def _apply_structure_adjustments(
     pk["residual_prop"] = float(
         np.clip(pk["residual_prop"] * (0.90 + 0.60 * uncertainty), 0.05, 0.60)
     )
-    pd["residual_sd"] = float(np.clip(pd["residual_sd"] * (0.85 + 0.80 * uncertainty), 1.0, 20.0))
+    pd["residual_sd"] = float(
+        np.clip(pd["residual_sd"] * (0.85 + 0.80 * uncertainty), 1.0, 20.0)
+    )
     heterogeneity["site_sd"] = float(
         np.clip(heterogeneity["site_sd"] * (0.85 + 0.80 * uncertainty), 0.3, 4.0)
     )
@@ -677,10 +707,14 @@ def _apply_structure_adjustments(
         np.clip(round(adaptive["interim_every"] * (1.0 - 0.25 * uncertainty)), 10, 120)
     )
     stopping["success_posterior_threshold"] = float(
-        np.clip(stopping["success_posterior_threshold"] + 0.06 * uncertainty, 0.90, 0.999)
+        np.clip(
+            stopping["success_posterior_threshold"] + 0.06 * uncertainty, 0.90, 0.999
+        )
     )
     stopping["futility_posterior_threshold"] = float(
-        np.clip(stopping["futility_posterior_threshold"] + 0.15 * uncertainty, 0.10, 0.70)
+        np.clip(
+            stopping["futility_posterior_threshold"] + 0.15 * uncertainty, 0.10, 0.70
+        )
     )
 
     return {
@@ -689,7 +723,9 @@ def _apply_structure_adjustments(
     }
 
 
-def _apply_rdkit_adjustments(payload: dict[str, Any], rdkit: dict[str, Any]) -> dict[str, Any]:
+def _apply_rdkit_adjustments(
+    payload: dict[str, Any], rdkit: dict[str, Any]
+) -> dict[str, Any]:
     pk_raw = payload.get("pk_model")
     pd_raw = payload.get("pd_model")
     enrollment_raw = payload.get("enrollment")
@@ -720,7 +756,9 @@ def _apply_rdkit_adjustments(payload: dict[str, Any], rdkit: dict[str, Any]) -> 
     size_penalty = float(np.clip((mol_wt - 450.0) / 350.0, 0.0, 1.2))
     permeability_penalty = float(
         np.clip(
-            (tpsa - 100.0) / 120.0 + max(hbd - 3.0, 0.0) / 5.0 + max(hba - 8.0, 0.0) / 10.0,
+            (tpsa - 100.0) / 120.0
+            + max(hbd - 3.0, 0.0) / 5.0
+            + max(hba - 8.0, 0.0) / 10.0,
             0.0,
             1.4,
         )
@@ -742,16 +780,23 @@ def _apply_rdkit_adjustments(payload: dict[str, Any], rdkit: dict[str, Any]) -> 
         )
     )
     ka_factor = float(
-        np.clip(1.0 - 0.30 * permeability_penalty - 0.10 * flexibility_penalty, 0.55, 1.15)
+        np.clip(
+            1.0 - 0.30 * permeability_penalty - 0.10 * flexibility_penalty, 0.55, 1.15
+        )
     )
     safety_shift = float(
         np.clip(
-            0.50 * lipophilicity_penalty + 0.55 * alert_penalty - 0.18 * quality_bonus, -0.20, 1.20
+            0.50 * lipophilicity_penalty + 0.55 * alert_penalty - 0.18 * quality_bonus,
+            -0.20,
+            1.20,
         )
     )
     dropout_factor = float(
         np.clip(
-            1.0 + 0.30 * alert_penalty + 0.20 * lipophilicity_penalty + 0.12 * flexibility_penalty,
+            1.0
+            + 0.30 * alert_penalty
+            + 0.20 * lipophilicity_penalty
+            + 0.12 * flexibility_penalty,
             0.85,
             1.9,
         )
@@ -806,7 +851,9 @@ def _apply_target_adjustments(
     stopping = stopping_raw
 
     length = _value_any_key(target_properties, ("length",), default=450.0)
-    instability = _value_any_key(target_properties, ("instability_index",), default=40.0)
+    instability = _value_any_key(
+        target_properties, ("instability_index",), default=40.0
+    )
     antibody_liability = _value_any_key(
         target_properties, ("antibody_liability_score",), default=0.0
     )
@@ -817,7 +864,9 @@ def _apply_target_adjustments(
 
     complexity = float(np.clip((length - 300.0) / 1200.0, 0.0, 1.2))
     instability_risk = float(np.clip((instability - 40.0) / 40.0, 0.0, 1.2))
-    liability_risk = float(np.clip((antibody_liability + peptide_liability) / 10.0, 0.0, 1.2))
+    liability_risk = float(
+        np.clip((antibody_liability + peptide_liability) / 10.0, 0.0, 1.2)
+    )
     hydrophilicity = float(np.clip(-gravy, -1.0, 1.0))
 
     assessment_factor = float(np.clip(0.95 + 0.35 * complexity, 0.8, 1.5))
@@ -866,7 +915,9 @@ def _apply_candidate_arm_overrides(
     if not isinstance(arms_raw, list) or not arms_raw:
         return {}
 
-    control = next((arm for arm in arms_raw if bool(_mapping(arm).get("is_control"))), None)
+    control = next(
+        (arm for arm in arms_raw if bool(_mapping(arm).get("is_control"))), None
+    )
     control_arm = _mapping(control) if control is not None else _mapping(arms_raw[0])
     control_arm["is_control"] = True
     control_arm["dose_mg"] = float(control_arm.get("dose_mg", 0.0))
@@ -911,7 +962,9 @@ def _apply_candidate_arm_overrides(
     payload["arms"] = new_arms
     adaptive_raw = payload.get("adaptive")
     if isinstance(adaptive_raw, dict):
-        adaptive_raw["min_allocation"] = float(np.clip(0.60 / len(new_arms), 0.08, 0.25))
+        adaptive_raw["min_allocation"] = float(
+            np.clip(0.60 / len(new_arms), 0.08, 0.25)
+        )
     return {
         "num_treatment_arms": len(new_arms) - 1,
         "arm_assignments": selected_rows,
@@ -953,7 +1006,9 @@ def _build_management_summary(
         risks.append(
             {
                 "risk": "Safety signal uncertainty",
-                "severity": "high" if safety < 0.45 or red_flag_count >= 2 else "medium",
+                "severity": (
+                    "high" if safety < 0.45 or red_flag_count >= 2 else "medium"
+                ),
             }
         )
         actions.append(
@@ -966,7 +1021,9 @@ def _build_management_summary(
         )
     if confidence < 0.65:
         risks.append({"risk": "Low structural confidence", "severity": "medium"})
-        actions.append("Run confirmatory structure/affinity replicates before pivotal design lock.")
+        actions.append(
+            "Run confirmatory structure/affinity replicates before pivotal design lock."
+        )
     if float(summary.get("candidate_count", 0)) > 1:
         actions.append(
             "Treat the program as a multi-arm portfolio and monitor arm-level adaptation drift."

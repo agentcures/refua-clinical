@@ -157,10 +157,18 @@ def render_advice_markdown(report: dict[str, Any]) -> str:
     lines.append("## Key Metrics")
     lines.append(f"- Simulated power: {float(summary.get('power', 0.0)):.3f}")
     lines.append(f"- Mean effect: {float(summary.get('mean_effect', 0.0)):.3f}")
-    lines.append(f"- Safety event rate: {float(summary.get('safety_event_rate', 0.0)):.3f}")
-    lines.append(f"- Expected sample size: {float(summary.get('expected_sample_size', 0.0)):.1f}")
-    lines.append(f"- Stop for success: {float(summary.get('stop_success_rate', 0.0)):.3f}")
-    lines.append(f"- Stop for futility: {float(summary.get('stop_futility_rate', 0.0)):.3f}")
+    lines.append(
+        f"- Safety event rate: {float(summary.get('safety_event_rate', 0.0)):.3f}"
+    )
+    lines.append(
+        f"- Expected sample size: {float(summary.get('expected_sample_size', 0.0)):.1f}"
+    )
+    lines.append(
+        f"- Stop for success: {float(summary.get('stop_success_rate', 0.0)):.3f}"
+    )
+    lines.append(
+        f"- Stop for futility: {float(summary.get('stop_futility_rate', 0.0)):.3f}"
+    )
     lines.append("")
 
     lines.append("## Recommendations")
@@ -328,7 +336,9 @@ def _with_replicates(config: SimulationConfig, replicates: int) -> SimulationCon
     return config_from_mapping(payload)
 
 
-def _perturb_parameter(config: SimulationConfig, path: str, direction: float) -> SimulationConfig:
+def _perturb_parameter(
+    config: SimulationConfig, path: str, direction: float
+) -> SimulationConfig:
     payload = config_to_mapping(config)
     keys = path.split(".")
 
@@ -393,10 +403,14 @@ def _recommendations(
     power = summary["power"]
     safety = summary["safety_event_rate"]
     effect = summary["mean_effect"]
-    responder_gap = summary["responder_rate_treatment"] - summary["responder_rate_control"]
+    responder_gap = (
+        summary["responder_rate_treatment"] - summary["responder_rate_control"]
+    )
     stop_futility = summary["stop_futility_rate"]
     expected_sample_size = summary["expected_sample_size"]
-    planned_n = float(config.enrollment.total_n) if config is not None else expected_sample_size
+    planned_n = (
+        float(config.enrollment.total_n) if config is not None else expected_sample_size
+    )
 
     if power < 0.80:
         current_n = int(config.enrollment.total_n) if config is not None else 180
@@ -545,7 +559,9 @@ def _recommendations(
 
     if admet_payload is not None:
         red_flags = [
-            str(item) for item in admet_payload.get("red_flags", []) if isinstance(item, str)
+            str(item)
+            for item in admet_payload.get("red_flags", [])
+            if isinstance(item, str)
         ]
         safety_score = float(admet_payload.get("safety_score", 0.5))
         if red_flags:
@@ -557,7 +573,9 @@ def _recommendations(
                         "rules, and exclusion criteria) "
                         "for flagged liabilities"
                     ),
-                    "rationale": (f"ADMET red flags detected: {', '.join(red_flags[:5])}."),
+                    "rationale": (
+                        f"ADMET red flags detected: {', '.join(red_flags[:5])}."
+                    ),
                 }
             )
 
@@ -614,7 +632,9 @@ def _recommendations(
         )
 
     priority_rank = {"high": 0, "medium": 1, "low": 2}
-    return sorted(items, key=lambda item: priority_rank.get(str(item.get("priority")), 9))
+    return sorted(
+        items, key=lambda item: priority_rank.get(str(item.get("priority")), 9)
+    )
 
 
 def _render_narrative(
@@ -706,7 +726,9 @@ def load_optional_json(path: Path | None) -> dict[str, Any] | None:
     return payload
 
 
-def summarize_recommendations(recommendations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def summarize_recommendations(
+    recommendations: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     return [
         {
             "priority": str(item.get("priority", "medium")),

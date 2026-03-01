@@ -35,7 +35,9 @@ def apply_estimand(
         return frame.loc[~frame["dropped_out"].astype(bool)].copy()
 
     if strategy == "hypothetical":
-        return _apply_hypothetical(frame, control_arm_id=control_arm_id, estimand=estimand)
+        return _apply_hypothetical(
+            frame, control_arm_id=control_arm_id, estimand=estimand
+        )
 
     if strategy == "composite":
         return _apply_composite(frame, estimand=estimand)
@@ -80,7 +82,8 @@ def _apply_hypothetical(
     imputed_value = control_mean + float(estimand.control_imputation_shift)
     out.loc[dropped, "analysis_value"] = imputed_value
     out.loc[dropped, "analysis_responder"] = (
-        out.loc[dropped, "analysis_value"] >= out.loc[dropped, "analysis_value"].median()
+        out.loc[dropped, "analysis_value"]
+        >= out.loc[dropped, "analysis_value"].median()
     )
     return out
 
@@ -88,9 +91,9 @@ def _apply_hypothetical(
 def _apply_composite(frame: pd.DataFrame, *, estimand: EstimandSpec) -> pd.DataFrame:
     out = frame.copy()
     intercurrent = out["dropped_out"].astype(bool) | out["rescue_use"].astype(bool)
-    out.loc[intercurrent, "analysis_value"] = (
-        out.loc[intercurrent, "analysis_value"].astype(float) - float(estimand.rescue_penalty)
-    )
+    out.loc[intercurrent, "analysis_value"] = out.loc[
+        intercurrent, "analysis_value"
+    ].astype(float) - float(estimand.rescue_penalty)
     out.loc[intercurrent, "analysis_responder"] = False
     return out
 

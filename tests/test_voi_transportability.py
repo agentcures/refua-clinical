@@ -1,7 +1,10 @@
 import pandas as pd
 
 from refua_clinical.models import default_simulation_config
-from refua_clinical.transportability import assess_transportability, transportability_to_markdown
+from refua_clinical.transportability import (
+    assess_transportability,
+    transportability_to_markdown,
+)
 from refua_clinical.voi import estimate_value_of_information, voi_to_markdown
 
 

@@ -25,7 +25,11 @@ from .modality import apply_modality_preset
 from .models import ProtocolRecommendation, SimulationConfig, default_simulation_config
 from .optimization import optimization_to_markdown, optimize_design_space
 from .protocol import recommend_protocol, render_protocol_markdown
-from .refua_bridge import RefuaIntegrationPolicy, apply_refua_adjustments, load_refua_payload
+from .refua_bridge import (
+    RefuaIntegrationPolicy,
+    apply_refua_adjustments,
+    load_refua_payload,
+)
 from .transportability import assess_transportability
 from .trial import TrialSimulationResult, simulate_trials, trial_result_to_mapping
 from .voi import estimate_value_of_information, voi_to_markdown
@@ -54,7 +58,9 @@ class ClinicalProtocol:
     def to_markdown(self) -> str:
         return render_protocol_markdown(self.recommendation.protocol)
 
-    def save(self, path: str | Path, *, markdown: str | Path | None = None) -> ClinicalProtocol:
+    def save(
+        self, path: str | Path, *, markdown: str | Path | None = None
+    ) -> ClinicalProtocol:
         dump_json(path, self.to_dict())
         if markdown is not None:
             md_path = Path(markdown)
@@ -98,7 +104,9 @@ class ClinicalVOI:
     def to_markdown(self) -> str:
         return voi_to_markdown(self.payload)
 
-    def save(self, path: str | Path, *, markdown: str | Path | None = None) -> ClinicalVOI:
+    def save(
+        self, path: str | Path, *, markdown: str | Path | None = None
+    ) -> ClinicalVOI:
         dump_json(path, self.payload)
         if markdown is not None:
             md_path = Path(markdown)
@@ -119,7 +127,9 @@ class ClinicalAdvice:
     def to_markdown(self) -> str:
         return render_advice_markdown(self.report)
 
-    def save(self, path: str | Path, *, markdown: str | Path | None = None) -> ClinicalAdvice:
+    def save(
+        self, path: str | Path, *, markdown: str | Path | None = None
+    ) -> ClinicalAdvice:
         dump_json(path, self.report)
         if markdown is not None:
             md_path = Path(markdown)
@@ -264,7 +274,9 @@ class ClinicalRun:
         report = build_advice_report(
             self.payload,
             protocol_payload=protocol.to_dict() if protocol is not None else None,
-            optimization_payload=optimization.to_dict() if optimization is not None else None,
+            optimization_payload=(
+                optimization.to_dict() if optimization is not None else None
+            ),
             voi_payload=voi.to_dict() if voi is not None else None,
             admet_payload=admet_payload,
             include_sensitivity=bool(include_sensitivity),
@@ -422,14 +434,18 @@ class ClinicalStudy:
             self._config,
             preset=str(preset),
             dosing_interval_hours=(
-                float(dosing_interval_hours) if dosing_interval_hours is not None else None
+                float(dosing_interval_hours)
+                if dosing_interval_hours is not None
+                else None
             ),
             tmdd_strength=float(tmdd_strength) if tmdd_strength is not None else None,
         )
         return self
 
     def set(self, path: str, value: Any) -> ClinicalStudy:
-        updated = apply_set_overrides(config_to_mapping(self._config), [f"{path}={value}"])
+        updated = apply_set_overrides(
+            config_to_mapping(self._config), [f"{path}={value}"]
+        )
         self._config = config_from_mapping(updated)
         return self
 
@@ -510,7 +526,11 @@ class ClinicalStudy:
                 admet_profile = selected.get("admet_profile")
                 if isinstance(admet_summary, dict):
                     self._admet_context = {
-                        "profile": dict(admet_profile) if isinstance(admet_profile, dict) else None,
+                        "profile": (
+                            dict(admet_profile)
+                            if isinstance(admet_profile, dict)
+                            else None
+                        ),
                         "summary": dict(admet_summary),
                         "adjustments": None,
                     }

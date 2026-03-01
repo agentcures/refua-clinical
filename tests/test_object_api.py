@@ -37,7 +37,11 @@ def _refua_payload() -> dict:
                 "structure": {"confidence_score": 0.77},
             }
         ],
-        "target_properties": {"length": 850.0, "instability_index": 45.0, "gravy": -0.2},
+        "target_properties": {
+            "length": 850.0,
+            "instability_index": 45.0,
+            "gravy": -0.2,
+        },
     }
 
 
@@ -128,7 +132,9 @@ def test_object_api_biologics_mode_applies_pk_preset() -> None:
 
     treatment_arms = [arm for arm in config.arms if not arm.is_control]
     assert treatment_arms
-    assert all(float(arm.dosing_interval_hours or 0.0) == 336.0 for arm in treatment_arms)
+    assert all(
+        float(arm.dosing_interval_hours or 0.0) == 336.0 for arm in treatment_arms
+    )
 
     run = study.simulate()
     assert 0.0 <= float(run.summary["power"]) <= 1.0

@@ -1,6 +1,9 @@
 import json
 
-from refua_clinical.admet_integration import apply_admet_adjustments, summarize_admet_profile
+from refua_clinical.admet_integration import (
+    apply_admet_adjustments,
+    summarize_admet_profile,
+)
 from refua_clinical.explainability import build_advice_report, render_advice_markdown
 from refua_clinical.io import config_to_mapping
 from refua_clinical.models import default_simulation_config

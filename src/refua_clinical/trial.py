@@ -10,21 +10,31 @@ import numpy as np
 import pandas as pd
 
 from .estimands import apply_estimand
-from .models import ArmSpec, InterimUpdate, ReplicateResult, SimulationConfig, TrialSimulationResult
+from .models import (
+    ArmSpec,
+    InterimUpdate,
+    ReplicateResult,
+    SimulationConfig,
+    TrialSimulationResult,
+)
 from .pkpd import simulate_pd_outcomes, simulate_pk_metrics, two_arm_test
 from .stopping import evaluate_interim_decision
 from .virtual_patients import generate_virtual_population
 
 
 def simulate_trials(config: SimulationConfig) -> TrialSimulationResult:
-    virtual_population = generate_virtual_population(config.population, seed=config.seed)
+    virtual_population = generate_virtual_population(
+        config.population, seed=config.seed
+    )
     vp_table = virtual_population.table
 
     replicates: list[ReplicateResult] = []
     for idx in range(config.replicates):
         replicate_seed = config.seed + idx * 17 + 11
         replicates.append(
-            _simulate_one_replicate(config, vp_table, replicate_id=idx + 1, seed=replicate_seed)
+            _simulate_one_replicate(
+                config, vp_table, replicate_id=idx + 1, seed=replicate_seed
+            )
         )
 
     summary = summarize_simulation(replicates)
@@ -40,7 +50,9 @@ def summarize_simulation(replicates: list[ReplicateResult]) -> dict[str, Any]:
 
     effects = np.array([rep.treatment_effect for rep in replicates], dtype=float)
     p_values = np.array([rep.p_value for rep in replicates], dtype=float)
-    target_hits = np.array([float(rep.achieved_target) for rep in replicates], dtype=float)
+    target_hits = np.array(
+        [float(rep.achieved_target) for rep in replicates], dtype=float
+    )
     safety = np.array([rep.safety_event_rate for rep in replicates], dtype=float)
     resp_t = np.array([rep.responders_treatment for rep in replicates], dtype=float)
     resp_c = np.array([rep.responders_control for rep in replicates], dtype=float)
@@ -53,7 +65,9 @@ def summarize_simulation(replicates: list[ReplicateResult]) -> dict[str, Any]:
         [float(rep.stop_reason == "futility") for rep in replicates],
         dtype=float,
     )
-    ext_weight = np.array([rep.effective_external_weight for rep in replicates], dtype=float)
+    ext_weight = np.array(
+        [rep.effective_external_weight for rep in replicates], dtype=float
+    )
 
     return {
         "replicates": int(len(replicates)),
@@ -113,11 +127,15 @@ def _simulate_one_replicate(
     total_n = config.enrollment.total_n
 
     replace = len(population) < total_n
-    sample = population.sample(n=total_n, replace=replace, random_state=seed).reset_index(drop=True)
+    sample = population.sample(
+        n=total_n, replace=replace, random_state=seed
+    ).reset_index(drop=True)
     sample = _assign_operational_strata(sample, config=config, rng=rng)
 
     patient_ids = sample["patient_id"].to_numpy(dtype=int)
-    block_index = np.arange(total_n, dtype=int) // max(config.enrollment.accrual_per_block, 1)
+    block_index = np.arange(total_n, dtype=int) // max(
+        config.enrollment.accrual_per_block, 1
+    )
     drift = block_index.astype(float) * float(config.enrollment.drift_per_block)
 
     control_arm = _control_arm(config.arms)
@@ -141,7 +159,8 @@ def _simulate_one_replicate(
         rescue_prob = float(
             np.clip(
                 0.04
-                + 0.18 * float(arm_outcome["change"] < config.endpoint.target_difference)
+                + 0.18
+                * float(arm_outcome["change"] < config.endpoint.target_difference)
                 + 0.16 * float(arm_outcome["safety_event"]),
                 0.0,
                 0.90,
@@ -204,7 +223,9 @@ def _simulate_one_replicate(
             decision_cards.append(decision)
 
             if bool(decision.get("stop", False)):
-                stop_reason = str(decision.get("reason")) if decision.get("reason") else None
+                stop_reason = (
+                    str(decision.get("reason")) if decision.get("reason") else None
+                )
                 stop_interim_index = int(interim_count)
                 break
 
@@ -229,7 +250,9 @@ def _simulate_one_replicate(
     effect, p_value, effective_weight = two_arm_test(
         treatment=treatment_values,
         control=control_values,
-        external_control_n=config.external_control.n if config.external_control.enabled else 0,
+        external_control_n=(
+            config.external_control.n if config.external_control.enabled else 0
+        ),
         external_control_mean=config.external_control.mean,
         external_control_std=config.external_control.std,
         external_control_weight=config.external_control.weight,
@@ -250,7 +273,9 @@ def _simulate_one_replicate(
             "analysis_responder",
         ].mean()
     )
-    safety_rate = float(enrolled["safety_event"].mean()) if not enrolled.empty else float("nan")
+    safety_rate = (
+        float(enrolled["safety_event"].mean()) if not enrolled.empty else float("nan")
+    )
 
     achieved_target = bool(
         (stop_reason == "success")
@@ -326,7 +351,8 @@ def _operational_shift(
     country_ids = sample["country_id"].astype(str)
 
     site_levels = {
-        site: rng.normal(0.0, config.heterogeneity.site_sd) for site in site_ids.unique()
+        site: rng.normal(0.0, config.heterogeneity.site_sd)
+        for site in site_ids.unique()
     }
     country_levels = {
         country: rng.normal(0.0, config.heterogeneity.country_sd)
@@ -383,7 +409,9 @@ def _adaptive_allocation(
     control_id = _control_arm(config.arms).arm_id
     treatment_ids = [arm.arm_id for arm in config.arms if not arm.is_control]
 
-    if analysis.empty or any(len(analysis[analysis["arm_id"] == t]) < 4 for t in treatment_ids):
+    if analysis.empty or any(
+        len(analysis[analysis["arm_id"] == t]) < 4 for t in treatment_ids
+    ):
         default = _initial_allocation(config.arms)
         return default, {arm.arm_id: 1.0 / len(config.arms) for arm in config.arms}
 
@@ -399,7 +427,9 @@ def _adaptive_allocation(
     min_alloc = float(np.clip(config.adaptive.min_allocation, 0.0, 0.45))
     control_share = max(min_alloc, 1.0 / len(config.arms))
 
-    tx_probs = np.array([posterior.get(arm_id, 0.0) for arm_id in treatment_ids], dtype=float)
+    tx_probs = np.array(
+        [posterior.get(arm_id, 0.0) for arm_id in treatment_ids], dtype=float
+    )
     if np.sum(tx_probs) <= 0.0:
         tx_probs = np.ones(len(treatment_ids), dtype=float)
     tx_probs = tx_probs / np.sum(tx_probs)
@@ -435,17 +465,17 @@ def _posterior_best_probabilities(
 
     if endpoint_kind == "binary":
         for arm_id in [control_id, *treatment_ids]:
-            values = analysis.loc[analysis["arm_id"] == arm_id, "analysis_responder"].to_numpy(
-                dtype=float
-            )
+            values = analysis.loc[
+                analysis["arm_id"] == arm_id, "analysis_responder"
+            ].to_numpy(dtype=float)
             success = float(np.sum(values))
             n = float(values.size)
             draws[arm_id] = rng.beta(1.0 + success, 1.0 + n - success, size=samples)
     else:
         for arm_id in [control_id, *treatment_ids]:
-            values = analysis.loc[analysis["arm_id"] == arm_id, "analysis_value"].to_numpy(
-                dtype=float
-            )
+            values = analysis.loc[
+                analysis["arm_id"] == arm_id, "analysis_value"
+            ].to_numpy(dtype=float)
             mean = float(np.mean(values))
             sd = float(np.std(values, ddof=1)) if values.size > 1 else 10.0
             se = max(sd / np.sqrt(max(values.size, 1)), 1e-3)

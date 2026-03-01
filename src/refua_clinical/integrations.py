@@ -73,7 +73,9 @@ def build_refua_regulatory_bundle(
         ) from exc
 
     payload = json.loads(Path(run_artifact_path).read_text(encoding="utf-8"))
-    objective = str(payload.get("config", {}).get("objective", "Clinical trial simulation"))
+    objective = str(
+        payload.get("config", {}).get("objective", "Clinical trial simulation")
+    )
     run_id = str(payload.get("run_id", "refua-clinical-run"))
     summary = payload.get("summary", {})
 
@@ -108,7 +110,9 @@ def build_refua_regulatory_bundle(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     campaign_run_path = output_dir / "_clinical_campaign_run.json"
-    campaign_run_path.write_text(json.dumps(campaign_payload, indent=2) + "\n", encoding="utf-8")
+    campaign_run_path.write_text(
+        json.dumps(campaign_payload, indent=2) + "\n", encoding="utf-8"
+    )
 
     manifests = list(data_manifest_paths or [])
     return build_evidence_bundle(

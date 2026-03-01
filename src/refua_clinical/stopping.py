@@ -84,7 +84,9 @@ def evaluate_interim_decision(
         samples=1800,
         rng=rng,
     )
-    predictive_prob = float(np.clip(posterior_prob * np.sqrt(max(info_fraction, 1e-6)), 0.0, 1.0))
+    predictive_prob = float(
+        np.clip(posterior_prob * np.sqrt(max(info_fraction, 1e-6)), 0.0, 1.0)
+    )
 
     meets_success = (
         enrolled_n >= stopping.min_interim_n
@@ -130,7 +132,9 @@ def _best_arm_by_mean(analysis_frame: pd.DataFrame, *, treatment_ids: list[str])
     best_id = treatment_ids[0]
     best_mean = -np.inf
     for arm_id in treatment_ids:
-        values = analysis_frame.loc[analysis_frame["arm_id"] == arm_id, "analysis_value"]
+        values = analysis_frame.loc[
+            analysis_frame["arm_id"] == arm_id, "analysis_value"
+        ]
         if values.empty:
             continue
         mean_value = float(values.mean())
@@ -151,7 +155,9 @@ def _posterior_probability_superior(
         return 0.5
 
     tx_mean = float(np.mean(treatment_values))
-    tx_se = float(np.std(treatment_values, ddof=1) / np.sqrt(max(treatment_values.size, 1)))
+    tx_se = float(
+        np.std(treatment_values, ddof=1) / np.sqrt(max(treatment_values.size, 1))
+    )
     ct_mean = float(np.mean(control_values))
     ct_se = float(np.std(control_values, ddof=1) / np.sqrt(max(control_values.size, 1)))
 

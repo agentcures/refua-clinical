@@ -23,7 +23,9 @@ def test_cli_init_simulate_and_rerun(tmp_path: Path) -> None:
 
     payload = config_path.read_text(encoding="utf-8")
     assert "trial_id" in payload
-    config_path.write_text(payload.replace("replicates: 250", "replicates: 24"), encoding="utf-8")
+    config_path.write_text(
+        payload.replace("replicates: 250", "replicates: 24"), encoding="utf-8"
+    )
 
     rc = main(["simulate", "--config", str(config_path), "--output", str(run_path)])
     assert rc == 0
@@ -239,7 +241,11 @@ def test_cli_simulate_with_refua_integration(tmp_path: Path) -> None:
                         "structure": {"confidence_score": 0.77},
                     }
                 ],
-                "target_properties": {"length": 850.0, "instability_index": 45.0, "gravy": -0.2},
+                "target_properties": {
+                    "length": 850.0,
+                    "instability_index": 45.0,
+                    "gravy": -0.2,
+                },
             }
         ),
         encoding="utf-8",
@@ -266,7 +272,9 @@ def test_cli_simulate_with_refua_integration(tmp_path: Path) -> None:
     assert run_payload["refua"]["adjustments"] is not None
 
 
-def test_cli_simulate_with_refua_strict_contract_rejects_legacy_payload(tmp_path: Path) -> None:
+def test_cli_simulate_with_refua_strict_contract_rejects_legacy_payload(
+    tmp_path: Path,
+) -> None:
     config_path = tmp_path / "config.yaml"
     refua_payload_path = tmp_path / "refua_payload_legacy.json"
     run_path = tmp_path / "run_refua_strict.json"
@@ -311,7 +319,9 @@ def test_cli_simulate_with_refua_strict_contract_rejects_legacy_payload(tmp_path
     assert rc == 2
 
 
-def test_cli_integrate_refua_generates_adjusted_config_and_summary(tmp_path: Path) -> None:
+def test_cli_integrate_refua_generates_adjusted_config_and_summary(
+    tmp_path: Path,
+) -> None:
     config_path = tmp_path / "config.yaml"
     refua_payload_path = tmp_path / "refua_payload.json"
     output_config_path = tmp_path / "config_adjusted.yaml"
@@ -407,6 +417,8 @@ def test_cli_simulate_with_modality_preset(tmp_path: Path) -> None:
     assert pk_model["route"] == "sc"
     assert float(pk_model["tmdd_strength"]) == 0.4
 
-    treatment_arms = [arm for arm in run_payload["config"]["arms"] if not bool(arm["is_control"])]
+    treatment_arms = [
+        arm for arm in run_payload["config"]["arms"] if not bool(arm["is_control"])
+    ]
     assert treatment_arms
     assert all(float(arm["dosing_interval_hours"]) == 336.0 for arm in treatment_arms)

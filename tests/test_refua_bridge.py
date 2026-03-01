@@ -172,7 +172,9 @@ def test_apply_refua_adjustments_changes_multiple_model_dimensions() -> None:
     assert management["recommended_actions"]
 
 
-def test_apply_refua_adjustments_in_biologic_mode_skips_small_molecule_adjustments() -> None:
+def test_apply_refua_adjustments_in_biologic_mode_skips_small_molecule_adjustments() -> (
+    None
+):
     config = default_simulation_config()
     config.pk_model.modality = "biologic"
     config.pk_model.route = "sc"

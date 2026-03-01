@@ -262,7 +262,9 @@ def default_simulation_config() -> SimulationConfig:
             ],
         ),
         arms=[
-            ArmSpec(arm_id="control", label="Standard of Care", dose_mg=0.0, is_control=True),
+            ArmSpec(
+                arm_id="control", label="Standard of Care", dose_mg=0.0, is_control=True
+            ),
             ArmSpec(arm_id="low", label="Investigational Low Dose", dose_mg=80.0),
             ArmSpec(arm_id="high", label="Investigational High Dose", dose_mg=140.0),
         ],

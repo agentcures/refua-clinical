@@ -118,7 +118,9 @@ def _normalize_status(status: str | None) -> str:
         return "draft"
     if normalized not in _ALLOWED_TRIAL_STATUSES:
         allowed = ", ".join(sorted(_ALLOWED_TRIAL_STATUSES))
-        raise ValueError(f"Unsupported trial status '{status}'. Allowed values: {allowed}")
+        raise ValueError(
+            f"Unsupported trial status '{status}'. Allowed values: {allowed}"
+        )
     return normalized
 
 
@@ -128,7 +130,9 @@ def _normalize_source(source: str | None) -> str:
         normalized = "human"
     if normalized not in _ALLOWED_PATIENT_SOURCES:
         allowed = ", ".join(sorted(_ALLOWED_PATIENT_SOURCES))
-        raise ValueError(f"Unsupported patient source '{source}'. Allowed values: {allowed}")
+        raise ValueError(
+            f"Unsupported patient source '{source}'. Allowed values: {allowed}"
+        )
     return normalized
 
 
@@ -420,7 +424,8 @@ def _build_clinops_summary(trial: dict[str, Any]) -> dict[str, Any]:
     human_patients = [
         item
         for item in (trial.get("patients") or [])
-        if isinstance(item, dict) and str(item.get("source", "human")).lower() == "human"
+        if isinstance(item, dict)
+        and str(item.get("source", "human")).lower() == "human"
     ]
     first_enrolled_at: datetime | None = None
     for patient in human_patients:
@@ -455,7 +460,9 @@ def _build_clinops_summary(trial: dict[str, Any]) -> dict[str, Any]:
                 {
                     "site_id": site_id,
                     "risk_score": float(risk),
-                    "status": _normalize_site_status(str(site.get("status") or "planned")),
+                    "status": _normalize_site_status(
+                        str(site.get("status") or "planned")
+                    ),
                     "enrolled_human": int(enrollment_counts.get(site_id, 0)),
                 }
             )
@@ -627,9 +634,7 @@ def _build_management_summary(trial: dict[str, Any]) -> dict[str, Any]:
         control_arm_id = None
 
     arm_means = {
-        arm_id: float(np.mean(values))
-        for arm_id, values in by_arm.items()
-        if values
+        arm_id: float(np.mean(values)) for arm_id, values in by_arm.items() if values
     }
 
     observed_effect: float | None = None
@@ -673,12 +678,18 @@ def _blend_simulation_summary(
     observed_n = _coerce_float(management_summary.get("result_count_numeric"))
 
     weight = 0.0
-    if expected_sample_size is not None and expected_sample_size > 0 and observed_n is not None:
+    if (
+        expected_sample_size is not None
+        and expected_sample_size > 0
+        and observed_n is not None
+    ):
         weight = float(np.clip(observed_n / expected_sample_size, 0.0, 1.0))
 
     blended_effect: float | None = None
     if simulated_effect is not None and observed_effect is not None:
-        blended_effect = float((1.0 - weight) * simulated_effect + weight * observed_effect)
+        blended_effect = float(
+            (1.0 - weight) * simulated_effect + weight * observed_effect
+        )
     elif simulated_effect is not None:
         blended_effect = simulated_effect
     elif observed_effect is not None:
@@ -688,9 +699,13 @@ def _blend_simulation_summary(
     blended["observed_data_weight"] = weight
     blended["blended_effect_estimate"] = blended_effect
     blended["patient_count_human"] = management_summary.get("patient_count_human")
-    blended["patient_count_simulated"] = management_summary.get("patient_count_simulated")
+    blended["patient_count_simulated"] = management_summary.get(
+        "patient_count_simulated"
+    )
     blended["observed_response_rate"] = management_summary.get("observed_response_rate")
-    blended["observed_safety_event_rate"] = management_summary.get("observed_safety_event_rate")
+    blended["observed_safety_event_rate"] = management_summary.get(
+        "observed_safety_event_rate"
+    )
 
     return blended
 
@@ -722,7 +737,9 @@ class ClinicalTrialManager:
             trials = store.get("trials")
             if not isinstance(trials, list):
                 return []
-            summaries = [_trial_summary(_extract_nested_mapping(item)) for item in trials]
+            summaries = [
+                _trial_summary(_extract_nested_mapping(item)) for item in trials
+            ]
         summaries.sort(
             key=lambda item: str(item.get("updated_at") or ""),
             reverse=True,
@@ -842,7 +859,9 @@ class ClinicalTrialManager:
 
             config_mapping = _extract_nested_mapping(trial.get("config"))
             config_obj = config_from_mapping(config_mapping)
-            config_obj.indication = str(trial.get("indication") or config_obj.indication)
+            config_obj.indication = str(
+                trial.get("indication") or config_obj.indication
+            )
             config_obj.phase = str(trial.get("phase") or config_obj.phase)
             config_obj.objective = str(trial.get("objective") or config_obj.objective)
             trial["config"] = config_to_mapping(config_obj)
@@ -929,11 +948,16 @@ class ClinicalTrialManager:
 
             patients = trial.setdefault("patients", [])
             if not isinstance(patients, list):
-                raise ValueError("Store payload is corrupted: trial.patients must be a list")
+                raise ValueError(
+                    "Store payload is corrupted: trial.patients must be a list"
+                )
 
             existing: dict[str, Any] | None = None
             for item in patients:
-                if isinstance(item, dict) and str(item.get("patient_id")) == resolved_patient_id:
+                if (
+                    isinstance(item, dict)
+                    and str(item.get("patient_id")) == resolved_patient_id
+                ):
                     existing = item
                     break
 
@@ -997,7 +1021,9 @@ class ClinicalTrialManager:
 
             patients = trial.setdefault("patients", [])
             if not isinstance(patients, list):
-                raise ValueError("Store payload is corrupted: trial.patients must be a list")
+                raise ValueError(
+                    "Store payload is corrupted: trial.patients must be a list"
+                )
 
             existing_ids = {
                 str(item.get("patient_id"))
@@ -1088,11 +1114,16 @@ class ClinicalTrialManager:
 
             patients = trial.setdefault("patients", [])
             if not isinstance(patients, list):
-                raise ValueError("Store payload is corrupted: trial.patients must be a list")
+                raise ValueError(
+                    "Store payload is corrupted: trial.patients must be a list"
+                )
 
             patient_payload: dict[str, Any] | None = None
             for item in patients:
-                if isinstance(item, dict) and str(item.get("patient_id")) == resolved_patient_id:
+                if (
+                    isinstance(item, dict)
+                    and str(item.get("patient_id")) == resolved_patient_id
+                ):
                     patient_payload = item
                     break
 
@@ -1114,10 +1145,14 @@ class ClinicalTrialManager:
                 }
                 patients.append(patient_payload)
 
-            resolved_source = _normalize_source(source or str(patient_payload.get("source", "human")))
+            resolved_source = _normalize_source(
+                source or str(patient_payload.get("source", "human"))
+            )
             arm_id = values.get("arm_id") or patient_payload.get("arm_id")
             resolved_site_id = (
-                resolved_site_id or _safe_text(patient_payload.get("site_id")) or _patient_site_id(patient_payload)
+                resolved_site_id
+                or _safe_text(patient_payload.get("site_id"))
+                or _patient_site_id(patient_payload)
             )
 
             result_payload = {
@@ -1138,7 +1173,9 @@ class ClinicalTrialManager:
 
             results = trial.setdefault("results", [])
             if not isinstance(results, list):
-                raise ValueError("Store payload is corrupted: trial.results must be a list")
+                raise ValueError(
+                    "Store payload is corrupted: trial.results must be a list"
+                )
             results.append(result_payload)
 
             patient_payload["updated_at"] = now
@@ -1185,7 +1222,9 @@ class ClinicalTrialManager:
 
             simulations = trial.setdefault("simulations", [])
             if not isinstance(simulations, list):
-                raise ValueError("Store payload is corrupted: trial.simulations must be a list")
+                raise ValueError(
+                    "Store payload is corrupted: trial.simulations must be a list"
+                )
 
             simulations.append(
                 {
@@ -1261,11 +1300,17 @@ class ClinicalTrialManager:
 
             sites = trial.setdefault("sites", [])
             if not isinstance(sites, list):
-                raise ValueError("Store payload is corrupted: trial.sites must be a list")
+                raise ValueError(
+                    "Store payload is corrupted: trial.sites must be a list"
+                )
 
             existing = self._find_site_unlocked(trial, resolved_site_id)
             resolved_status = _normalize_site_status(
-                (str(existing.get("status") or "planned") if (status is None and existing is not None) else status)
+                (
+                    str(existing.get("status") or "planned")
+                    if (status is None and existing is not None)
+                    else status
+                )
             )
             payload = {
                 "site_id": resolved_site_id,
@@ -1390,7 +1435,10 @@ class ClinicalTrialManager:
 
                 patient_metadata = merge_mappings(
                     _extract_nested_mapping(metadata),
-                    {"screening_id": screening_payload["screening_id"], "site_id": resolved_site_id},
+                    {
+                        "screening_id": screening_payload["screening_id"],
+                        "site_id": resolved_site_id,
+                    },
                 )
                 patient_payload = {
                     "patient_id": resolved_patient_id,
@@ -1416,7 +1464,9 @@ class ClinicalTrialManager:
         return {
             "trial": self.get_trial(trial_id),
             "screening": _json_clone(screening_payload),
-            "patient": _json_clone(patient_payload) if patient_payload is not None else None,
+            "patient": (
+                _json_clone(patient_payload) if patient_payload is not None else None
+            ),
             "store_path": str(self._store_path),
         }
 
@@ -1523,7 +1573,9 @@ class ClinicalTrialManager:
         now = _utc_now_iso()
 
         if resolved_patient_id is None and resolved_site_id is None:
-            raise ValueError("Either patient_id or site_id must be provided for a query")
+            raise ValueError(
+                "Either patient_id or site_id must be provided for a query"
+            )
 
         with self._lock:
             store = self._load_store_unlocked()
@@ -1532,14 +1584,19 @@ class ClinicalTrialManager:
                 raise KeyError(trial_id)
             _ensure_trial_clinops_collections(trial)
 
-            if resolved_site_id is not None and self._find_site_unlocked(trial, resolved_site_id) is None:
+            if (
+                resolved_site_id is not None
+                and self._find_site_unlocked(trial, resolved_site_id) is None
+            ):
                 raise ValueError(
                     f"Unknown site_id '{resolved_site_id}'. Add the site before opening queries."
                 )
 
             queries = trial.setdefault("queries", [])
             if not isinstance(queries, list):
-                raise ValueError("Store payload is corrupted: trial.queries must be a list")
+                raise ValueError(
+                    "Store payload is corrupted: trial.queries must be a list"
+                )
 
             query_payload = {
                 "query_id": f"qry-{uuid.uuid4().hex[:12]}",
@@ -1607,7 +1664,9 @@ class ClinicalTrialManager:
                     existing_meta,
                     _extract_nested_mapping(updates.get("metadata")),
                 )
-            if query.get("status") in {"resolved", "cancelled"} and not query.get("resolved_at"):
+            if query.get("status") in {"resolved", "cancelled"} and not query.get(
+                "resolved_at"
+            ):
                 query["resolved_at"] = now
             query["updated_at"] = now
 
@@ -1649,14 +1708,19 @@ class ClinicalTrialManager:
                 raise KeyError(trial_id)
             _ensure_trial_clinops_collections(trial)
 
-            if resolved_site_id is not None and self._find_site_unlocked(trial, resolved_site_id) is None:
+            if (
+                resolved_site_id is not None
+                and self._find_site_unlocked(trial, resolved_site_id) is None
+            ):
                 raise ValueError(
                     f"Unknown site_id '{resolved_site_id}'. Add the site before recording deviations."
                 )
 
             deviations = trial.setdefault("deviations", [])
             if not isinstance(deviations, list):
-                raise ValueError("Store payload is corrupted: trial.deviations must be a list")
+                raise ValueError(
+                    "Store payload is corrupted: trial.deviations must be a list"
+                )
 
             deviation_payload = {
                 "deviation_id": f"dev-{uuid.uuid4().hex[:12]}",
@@ -1716,7 +1780,9 @@ class ClinicalTrialManager:
 
             patients = trial.setdefault("patients", [])
             if not isinstance(patients, list):
-                raise ValueError("Store payload is corrupted: trial.patients must be a list")
+                raise ValueError(
+                    "Store payload is corrupted: trial.patients must be a list"
+                )
             patient_payload: dict[str, Any] | None = None
             for item in patients:
                 if (
@@ -1726,11 +1792,14 @@ class ClinicalTrialManager:
                     patient_payload = item
                     break
             if patient_payload is not None and resolved_site_id is None:
-                resolved_site_id = _safe_text(patient_payload.get("site_id")) or _patient_site_id(
-                    patient_payload
-                )
+                resolved_site_id = _safe_text(
+                    patient_payload.get("site_id")
+                ) or _patient_site_id(patient_payload)
 
-            if resolved_site_id is not None and self._find_site_unlocked(trial, resolved_site_id) is None:
+            if (
+                resolved_site_id is not None
+                and self._find_site_unlocked(trial, resolved_site_id) is None
+            ):
                 raise ValueError(
                     f"Unknown site_id '{resolved_site_id}'. Add the site before recording safety events."
                 )
@@ -1799,20 +1868,27 @@ class ClinicalTrialManager:
 
             milestones = trial.setdefault("milestones", [])
             if not isinstance(milestones, list):
-                raise ValueError("Store payload is corrupted: trial.milestones must be a list")
+                raise ValueError(
+                    "Store payload is corrupted: trial.milestones must be a list"
+                )
 
             existing = self._find_milestone_unlocked(trial, resolved_milestone_id)
             if existing is None and resolved_name is None:
                 raise ValueError("name is required when creating a milestone")
             resolved_status = _normalize_milestone_status(
-                (str(existing.get("status") or "planned") if (status is None and existing is not None) else status)
+                (
+                    str(existing.get("status") or "planned")
+                    if (status is None and existing is not None)
+                    else status
+                )
             )
             if resolved_actual_date and status is None:
                 resolved_status = "completed"
 
             payload = {
                 "milestone_id": resolved_milestone_id,
-                "name": resolved_name or _safe_text(existing.get("name") if existing else None),
+                "name": resolved_name
+                or _safe_text(existing.get("name") if existing else None),
                 "target_date": _safe_text(target_date),
                 "status": resolved_status,
                 "owner": _safe_text(owner),
@@ -1935,7 +2011,9 @@ class ClinicalTrialManager:
         tmp_path.replace(self._store_path)
 
     @staticmethod
-    def _find_trial_unlocked(store: dict[str, Any], trial_id: str) -> dict[str, Any] | None:
+    def _find_trial_unlocked(
+        store: dict[str, Any], trial_id: str
+    ) -> dict[str, Any] | None:
         trials = store.get("trials")
         if not isinstance(trials, list):
             return None
@@ -1945,7 +2023,9 @@ class ClinicalTrialManager:
         return None
 
     @staticmethod
-    def _find_site_unlocked(trial: dict[str, Any], site_id: str) -> dict[str, Any] | None:
+    def _find_site_unlocked(
+        trial: dict[str, Any], site_id: str
+    ) -> dict[str, Any] | None:
         sites = trial.get("sites")
         if not isinstance(sites, list):
             return None
@@ -1955,7 +2035,9 @@ class ClinicalTrialManager:
         return None
 
     @staticmethod
-    def _find_query_unlocked(trial: dict[str, Any], query_id: str) -> dict[str, Any] | None:
+    def _find_query_unlocked(
+        trial: dict[str, Any], query_id: str
+    ) -> dict[str, Any] | None:
         queries = trial.get("queries")
         if not isinstance(queries, list):
             return None
@@ -1973,7 +2055,9 @@ class ClinicalTrialManager:
         if not isinstance(milestones, list):
             return None
         for item in milestones:
-            if isinstance(item, dict) and str(item.get("milestone_id")) == str(milestone_id):
+            if isinstance(item, dict) and str(item.get("milestone_id")) == str(
+                milestone_id
+            ):
                 return item
         return None
 

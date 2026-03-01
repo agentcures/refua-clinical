@@ -19,7 +19,9 @@ class VirtualPopulation:
     correlation: np.ndarray
 
 
-def generate_virtual_population(spec: VirtualPopulationSpec, *, seed: int) -> VirtualPopulation:
+def generate_virtual_population(
+    spec: VirtualPopulationSpec, *, seed: int
+) -> VirtualPopulation:
     if spec.size < 1:
         raise ValueError("population.size must be >= 1")
     if not spec.covariates:
@@ -52,11 +54,15 @@ def infer_population_spec_from_dataframe(
         raise ValueError("size must be >= 1")
 
     if columns is None:
-        numeric = [name for name in frame.columns if pd.api.types.is_numeric_dtype(frame[name])]
+        numeric = [
+            name for name in frame.columns if pd.api.types.is_numeric_dtype(frame[name])
+        ]
         columns = numeric[:4]
 
     if not columns:
-        raise ValueError("No usable numeric columns found for virtual patient inference")
+        raise ValueError(
+            "No usable numeric columns found for virtual patient inference"
+        )
 
     clean = frame[columns].dropna().reset_index(drop=True)
     if clean.empty:
@@ -82,7 +88,12 @@ def infer_population_spec_from_dataframe(
                 CovariateSpec(
                     name=column,
                     distribution="lognormal",
-                    params={"mean": mean, "cv": max(cv, 0.05), "min": minimum, "max": maximum},
+                    params={
+                        "mean": mean,
+                        "cv": max(cv, 0.05),
+                        "min": minimum,
+                        "max": maximum,
+                    },
                 )
             )
         else:
@@ -90,12 +101,19 @@ def infer_population_spec_from_dataframe(
                 CovariateSpec(
                     name=column,
                     distribution="normal",
-                    params={"mean": mean, "sd": max(sd, 1e-6), "min": minimum, "max": maximum},
+                    params={
+                        "mean": mean,
+                        "sd": max(sd, 1e-6),
+                        "min": minimum,
+                        "max": maximum,
+                    },
                 )
             )
 
     correlation = clean.corr(numeric_only=True).to_numpy(dtype=float)
-    return VirtualPopulationSpec(size=size, covariates=covariates, correlation=correlation.tolist())
+    return VirtualPopulationSpec(
+        size=size, covariates=covariates, correlation=correlation.tolist()
+    )
 
 
 def _resolve_correlation(spec: VirtualPopulationSpec, dims: int) -> np.ndarray:
@@ -120,7 +138,9 @@ def _resolve_correlation(spec: VirtualPopulationSpec, dims: int) -> np.ndarray:
     return repaired
 
 
-def _sample_marginal(spec: CovariateSpec, u: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+def _sample_marginal(
+    spec: CovariateSpec, u: np.ndarray, rng: np.random.Generator
+) -> np.ndarray:
     params = spec.params
     name = spec.distribution
 
@@ -163,7 +183,9 @@ def _sample_marginal(spec: CovariateSpec, u: np.ndarray, rng: np.random.Generato
     if np.any(~np.isfinite(values)):
         repaired = np.asarray(values, dtype=float)
         bad = ~np.isfinite(repaired)
-        repaired[bad] = rng.normal(loc=np.nanmean(repaired[~bad]), scale=1.0, size=int(np.sum(bad)))
+        repaired[bad] = rng.normal(
+            loc=np.nanmean(repaired[~bad]), scale=1.0, size=int(np.sum(bad))
+        )
         values = repaired
 
     return np.asarray(values)

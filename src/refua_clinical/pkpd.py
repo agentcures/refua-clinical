@@ -78,8 +78,10 @@ class _BiologicProfile:
         bioavailability: float,
         pk_model: PKModelSpec,
     ) -> np.ndarray:
-        cavg_linear = bioavailability * total_dose / (
-            max(int(duration_days), 1) * np.clip(cl, 1e-6, None)
+        cavg_linear = (
+            bioavailability
+            * total_dose
+            / (max(int(duration_days), 1) * np.clip(cl, 1e-6, None))
         )
         tmdd_strength = max(float(pk_model.tmdd_strength), 0.0)
         tmdd_cavg_ref = max(float(pk_model.tmdd_cavg_ref), 1e-6)
@@ -172,7 +174,9 @@ def simulate_pk_metrics(
     if count < 1:
         raise ValueError("Need at least one patient for PK simulation")
 
-    has_interval = arm.dosing_interval_hours is not None and float(arm.dosing_interval_hours) > 0.0
+    has_interval = (
+        arm.dosing_interval_hours is not None and float(arm.dosing_interval_hours) > 0.0
+    )
     if arm.dose_mg <= 0.0 or (arm.schedule_per_day <= 0 and not has_interval):
         zeros = np.zeros(count, dtype=float)
         cl = _individualized_cl(covariates, pk_model, rng)
@@ -218,7 +222,9 @@ def simulate_pk_metrics(
     cmax = np.maximum(cmax, 0.0)
     ctrough = np.maximum(ctrough, 0.0)
 
-    return PKMetrics(auc=auc, cavg=cavg, cmax=cmax, ctrough=ctrough, cl=cl_effective, v=v)
+    return PKMetrics(
+        auc=auc, cavg=cavg, cmax=cmax, ctrough=ctrough, cl=cl_effective, v=v
+    )
 
 
 def _dosing_schedule(*, arm: ArmSpec, duration_days: int) -> tuple[float, float]:

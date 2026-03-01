@@ -25,7 +25,9 @@ def test_estimand_composite_penalizes_intercurrent_events() -> None:
     summary = estimand_summary(analysis)
 
     assert summary["responder_rate"] <= 0.5
-    assert float(analysis.loc[1, "analysis_value"]) < float(observed.loc[1, "endpoint_value"])
+    assert float(analysis.loc[1, "analysis_value"]) < float(
+        observed.loc[1, "endpoint_value"]
+    )
 
 
 def test_interim_stopping_returns_decision_card() -> None:

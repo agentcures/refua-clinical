@@ -22,7 +22,10 @@ from .explainability import (
     summarize_recommendations,
     write_advice_artifacts,
 )
-from .integrations import build_refua_regulatory_bundle, infer_population_from_refua_data
+from .integrations import (
+    build_refua_regulatory_bundle,
+    infer_population_from_refua_data,
+)
 from .io import (
     apply_set_overrides,
     config_from_mapping,
@@ -44,7 +47,11 @@ from .refua_bridge import (
     summarize_refua_payload,
 )
 from .research import list_references
-from .transportability import assess_transportability, load_tabular, transportability_to_markdown
+from .transportability import (
+    assess_transportability,
+    load_tabular,
+    transportability_to_markdown,
+)
 from .trial import simulate_trials, trial_result_to_mapping
 from .voi import estimate_value_of_information, voi_to_markdown
 
@@ -61,8 +68,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    init_parser = sub.add_parser("init-config", help="Write a starter simulation config")
-    init_parser.add_argument("--output", type=Path, required=True, help="Output YAML path")
+    init_parser = sub.add_parser(
+        "init-config", help="Write a starter simulation config"
+    )
+    init_parser.add_argument(
+        "--output", type=Path, required=True, help="Output YAML path"
+    )
     _add_modality_preset_arguments(init_parser)
     init_parser.set_defaults(handler=_cmd_init_config)
 
@@ -83,8 +94,12 @@ def build_parser() -> argparse.ArgumentParser:
     _add_refua_arguments(simulate_parser)
     simulate_parser.set_defaults(handler=_cmd_simulate)
 
-    rerun_parser = sub.add_parser("rerun", help="Rerun from previous run artifact with overrides")
-    rerun_parser.add_argument("--run", type=Path, required=True, help="Previous run artifact JSON")
+    rerun_parser = sub.add_parser(
+        "rerun", help="Rerun from previous run artifact with overrides"
+    )
+    rerun_parser.add_argument(
+        "--run", type=Path, required=True, help="Previous run artifact JSON"
+    )
     rerun_parser.add_argument(
         "--overrides-file",
         type=Path,
@@ -97,7 +112,9 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         help="Inline override as dotted.path=value (repeatable)",
     )
-    rerun_parser.add_argument("--output", type=Path, required=True, help="Run artifact JSON path")
+    rerun_parser.add_argument(
+        "--output", type=Path, required=True, help="Run artifact JSON path"
+    )
     _add_modality_preset_arguments(rerun_parser)
     rerun_parser.set_defaults(handler=_cmd_rerun)
 
@@ -106,9 +123,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Recommend a tailored protocol via simulation-based design optimization",
     )
     protocol_group = protocol_parser.add_mutually_exclusive_group(required=True)
-    protocol_group.add_argument("--config", type=Path, help="Simulation config YAML/JSON")
+    protocol_group.add_argument(
+        "--config", type=Path, help="Simulation config YAML/JSON"
+    )
     protocol_group.add_argument("--run", type=Path, help="Existing run artifact JSON")
-    protocol_parser.add_argument("--output", type=Path, required=True, help="Protocol JSON output")
+    protocol_parser.add_argument(
+        "--output", type=Path, required=True, help="Protocol JSON output"
+    )
     protocol_parser.add_argument(
         "--markdown",
         type=Path,
@@ -129,7 +150,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run multi-objective design optimization and Pareto-front analysis",
     )
     optimize_group = optimize_parser.add_mutually_exclusive_group(required=True)
-    optimize_group.add_argument("--config", type=Path, help="Simulation config YAML/JSON")
+    optimize_group.add_argument(
+        "--config", type=Path, help="Simulation config YAML/JSON"
+    )
     optimize_group.add_argument("--run", type=Path, help="Existing run artifact JSON")
     optimize_parser.add_argument(
         "--output",
@@ -173,7 +196,9 @@ def build_parser() -> argparse.ArgumentParser:
     voi_group = voi_parser.add_mutually_exclusive_group(required=True)
     voi_group.add_argument("--config", type=Path, help="Simulation config YAML/JSON")
     voi_group.add_argument("--run", type=Path, help="Existing run artifact JSON")
-    voi_parser.add_argument("--output", type=Path, required=True, help="VOI result JSON output")
+    voi_parser.add_argument(
+        "--output", type=Path, required=True, help="VOI result JSON output"
+    )
     voi_parser.add_argument(
         "--markdown",
         type=Path,
@@ -239,8 +264,12 @@ def build_parser() -> argparse.ArgumentParser:
     from_data_parser.add_argument(
         "--dataset-id", required=True, help="Dataset id in refua-data catalog"
     )
-    from_data_parser.add_argument("--output", type=Path, required=True, help="Output YAML path")
-    from_data_parser.add_argument("--size", type=int, default=6000, help="Virtual population size")
+    from_data_parser.add_argument(
+        "--output", type=Path, required=True, help="Output YAML path"
+    )
+    from_data_parser.add_argument(
+        "--size", type=int, default=6000, help="Virtual population size"
+    )
     from_data_parser.add_argument(
         "--max-rows",
         type=int,
@@ -266,7 +295,9 @@ def build_parser() -> argparse.ArgumentParser:
         "evidence",
         help="Wrap simulation output into a refua-regulatory bundle",
     )
-    evidence_parser.add_argument("--run", type=Path, required=True, help="Run artifact JSON")
+    evidence_parser.add_argument(
+        "--run", type=Path, required=True, help="Run artifact JSON"
+    )
     evidence_parser.add_argument(
         "--output-dir", type=Path, required=True, help="Evidence bundle directory"
     )
@@ -286,7 +317,9 @@ def build_parser() -> argparse.ArgumentParser:
         "advise",
         help="Generate explainable narrative and actionable recommendations from a run artifact",
     )
-    advise_parser.add_argument("--run", type=Path, required=True, help="Run artifact JSON")
+    advise_parser.add_argument(
+        "--run", type=Path, required=True, help="Run artifact JSON"
+    )
     advise_parser.add_argument(
         "--protocol",
         type=Path,
@@ -481,7 +514,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     integrate_refua_parser.set_defaults(handler=_cmd_integrate_refua)
 
-    refs_parser = sub.add_parser("research", help="Print research references used by this package")
+    refs_parser = sub.add_parser(
+        "research", help="Print research references used by this package"
+    )
     refs_parser.set_defaults(handler=_cmd_research)
 
     return parser
@@ -491,7 +526,9 @@ def _cmd_init_config(args: argparse.Namespace) -> int:
     config = default_simulation_config()
     config = _apply_modality_preset_for_args(config, args)
     dump_yaml(args.output, config_to_mapping(config))
-    print(json.dumps({"output": str(args.output), "trial_id": config.trial_id}, indent=2))
+    print(
+        json.dumps({"output": str(args.output), "trial_id": config.trial_id}, indent=2)
+    )
     return 0
 
 
@@ -501,7 +538,11 @@ def _cmd_simulate(args: argparse.Namespace) -> int:
     admet_info = _load_admet_for_args(args)
     refua_info = _load_refua_for_args(args)
 
-    if admet_info is None and refua_info is not None and refua_info["selected_admet"] is not None:
+    if (
+        admet_info is None
+        and refua_info is not None
+        and refua_info["selected_admet"] is not None
+    ):
         selected_admet = dict(refua_info["selected_admet"])
         admet_info = {
             "profile": selected_admet,
@@ -542,7 +583,10 @@ def _cmd_simulate(args: argparse.Namespace) -> int:
             "adjustments": refua_info["adjustments"],
         }
     dump_json(args.output, payload)
-    output_payload: dict[str, Any] = {"run_id": payload["run_id"], "summary": payload["summary"]}
+    output_payload: dict[str, Any] = {
+        "run_id": payload["run_id"],
+        "summary": payload["summary"],
+    }
     if admet_info is not None:
         output_payload["admet"] = {
             "safety_score": admet_info["summary"]["safety_score"],
@@ -581,7 +625,11 @@ def _cmd_rerun(args: argparse.Namespace) -> int:
     result = simulate_trials(config)
     payload = trial_result_to_mapping(result)
     dump_json(args.output, payload)
-    print(json.dumps({"run_id": payload["run_id"], "summary": payload["summary"]}, indent=2))
+    print(
+        json.dumps(
+            {"run_id": payload["run_id"], "summary": payload["summary"]}, indent=2
+        )
+    )
     return 0
 
 
@@ -612,7 +660,9 @@ def _cmd_protocol(args: argparse.Namespace) -> int:
             {
                 "output": str(args.output),
                 "protocol_id": recommendation.protocol["protocol_id"],
-                "planned_enrollment": recommendation.protocol["design"]["planned_enrollment"],
+                "planned_enrollment": recommendation.protocol["design"][
+                    "planned_enrollment"
+                ],
                 "power": recommendation.protocol["simulated_performance"]["power"],
             },
             indent=2,
@@ -627,8 +677,12 @@ def _cmd_optimize(args: argparse.Namespace) -> int:
 
     payload = optimize_design_space(
         config,
-        candidate_total_n=list(args.candidate_total_n) if args.candidate_total_n else None,
-        candidate_interims=list(args.candidate_interims) if args.candidate_interims else None,
+        candidate_total_n=(
+            list(args.candidate_total_n) if args.candidate_total_n else None
+        ),
+        candidate_interims=(
+            list(args.candidate_interims) if args.candidate_interims else None
+        ),
         replicates_per_candidate=max(int(args.replicates_per_candidate), 20),
     )
     dump_json(args.output, payload)
@@ -695,7 +749,9 @@ def _cmd_transportability(args: argparse.Namespace) -> int:
 
     if args.markdown is not None:
         args.markdown.parent.mkdir(parents=True, exist_ok=True)
-        args.markdown.write_text(transportability_to_markdown(payload), encoding="utf-8")
+        args.markdown.write_text(
+            transportability_to_markdown(payload), encoding="utf-8"
+        )
 
     print(
         json.dumps(
@@ -787,9 +843,13 @@ def _cmd_advise(args: argparse.Namespace) -> int:
             {
                 "power": report["summary"]["power"],
                 "safety_event_rate": report["summary"]["safety_event_rate"],
-                "recommendations": summarize_recommendations(report["recommendations"])[:5],
+                "recommendations": summarize_recommendations(report["recommendations"])[
+                    :5
+                ],
                 "output_json": str(args.output_json) if args.output_json else None,
-                "output_markdown": str(args.output_markdown) if args.output_markdown else None,
+                "output_markdown": (
+                    str(args.output_markdown) if args.output_markdown else None
+                ),
             },
             indent=2,
         )
@@ -802,14 +862,20 @@ def _cmd_workup(args: argparse.Namespace) -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if (args.reference is None) != (args.target is None):
-        raise ValueError("Provide both --reference and --target for transportability diagnostics")
+        raise ValueError(
+            "Provide both --reference and --target for transportability diagnostics"
+        )
 
     config = _load_config(args.config)
     config = _apply_modality_preset_for_args(config, args)
     admet_info = _load_admet_for_args(args)
     refua_info = _load_refua_for_args(args)
 
-    if admet_info is None and refua_info is not None and refua_info["selected_admet"] is not None:
+    if (
+        admet_info is None
+        and refua_info is not None
+        and refua_info["selected_admet"] is not None
+    ):
         selected_admet = dict(refua_info["selected_admet"])
         admet_info = {
             "profile": selected_admet,
@@ -855,8 +921,12 @@ def _cmd_workup(args: argparse.Namespace) -> int:
     recommendation = recommend_protocol(
         config,
         replicates_per_candidate=max(int(args.replicates_per_candidate), 20),
-        candidate_total_n=list(args.candidate_total_n) if args.candidate_total_n else None,
-        candidate_interims=list(args.candidate_interims) if args.candidate_interims else None,
+        candidate_total_n=(
+            list(args.candidate_total_n) if args.candidate_total_n else None
+        ),
+        candidate_interims=(
+            list(args.candidate_interims) if args.candidate_interims else None
+        ),
     )
     protocol_payload = {
         "protocol": recommendation.protocol,
@@ -872,8 +942,12 @@ def _cmd_workup(args: argparse.Namespace) -> int:
 
     optimization_payload = optimize_design_space(
         config,
-        candidate_total_n=list(args.candidate_total_n) if args.candidate_total_n else None,
-        candidate_interims=list(args.candidate_interims) if args.candidate_interims else None,
+        candidate_total_n=(
+            list(args.candidate_total_n) if args.candidate_total_n else None
+        ),
+        candidate_interims=(
+            list(args.candidate_interims) if args.candidate_interims else None
+        ),
         replicates_per_candidate=max(int(args.replicates_per_candidate), 20),
     )
     optimization_path = output_dir / "optimization.json"
@@ -937,7 +1011,9 @@ def _cmd_workup(args: argparse.Namespace) -> int:
         "optimization": str(optimization_path),
         "voi": str(voi_path),
         "advice": str(advice_path),
-        "transportability": str(transportability_path) if transportability_path else None,
+        "transportability": (
+            str(transportability_path) if transportability_path else None
+        ),
     }
     manifest_path = output_dir / "manifest.json"
     dump_json(manifest_path, manifest)
@@ -948,10 +1024,14 @@ def _cmd_workup(args: argparse.Namespace) -> int:
                 "output_dir": str(output_dir),
                 "manifest": str(manifest_path),
                 "summary": run_payload["summary"],
-                "recommendations": summarize_recommendations(advice_payload["recommendations"])[:5],
-                "transportability": transportability_payload["risk_level"]
-                if transportability_payload is not None
-                else None,
+                "recommendations": summarize_recommendations(
+                    advice_payload["recommendations"]
+                )[:5],
+                "transportability": (
+                    transportability_payload["risk_level"]
+                    if transportability_payload is not None
+                    else None
+                ),
                 "refua_selected_ligand": _mapping(
                     _mapping(run_payload.get("refua")).get("summary")
                 ).get("selected_ligand_id"),
@@ -978,7 +1058,9 @@ def _cmd_integrate_refua(args: argparse.Namespace) -> int:
         json.dumps(
             {
                 "output_config": str(args.output_config),
-                "output_summary": str(args.output_summary) if args.output_summary else None,
+                "output_summary": (
+                    str(args.output_summary) if args.output_summary else None
+                ),
                 "selected_ligand_id": summary.get("selected_ligand_id"),
                 "candidate_count": summary.get("candidate_count"),
                 "readiness_index": management.get("readiness_index"),
@@ -1143,7 +1225,9 @@ def _apply_modality_preset_for_args(config: Any, args: argparse.Namespace) -> An
         dosing_interval_hours=(
             float(dosing_interval_raw) if dosing_interval_raw is not None else None
         ),
-        tmdd_strength=float(tmdd_strength_raw) if tmdd_strength_raw is not None else None,
+        tmdd_strength=(
+            float(tmdd_strength_raw) if tmdd_strength_raw is not None else None
+        ),
     )
 
 

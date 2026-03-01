@@ -21,7 +21,9 @@ def recommend_protocol(
 ) -> ProtocolRecommendation:
     base_n = max(config.enrollment.total_n, 60)
     if candidate_total_n is None:
-        candidate_total_n = sorted({int(base_n * 0.75), int(base_n), int(base_n * 1.25)})
+        candidate_total_n = sorted(
+            {int(base_n * 0.75), int(base_n), int(base_n * 1.25)}
+        )
     if candidate_interims is None:
         candidate_interims = sorted({20, 30, 45})
 
@@ -41,7 +43,9 @@ def recommend_protocol(
             power = float(result.summary["power"])
             effect = float(result.summary["mean_effect"])
             safety = float(result.summary["safety_event_rate"])
-            expected_sample_size = float(result.summary.get("expected_sample_size", total_n))
+            expected_sample_size = float(
+                result.summary.get("expected_sample_size", total_n)
+            )
             expected_cost = float(
                 expected_sample_size * candidate_config.costs.cost_per_patient
                 + float(result.summary.get("allocation_interims_mean", 0.0))
@@ -175,7 +179,13 @@ def _utility(
     safety_penalty = max(safety - 0.30, 0.0) * 120.0
     enrollment_penalty = float(total_n) * 0.04
     cost_penalty = float(expected_cost) / 120_000.0
-    return power * 100.0 + effect * 1.5 - safety_penalty - enrollment_penalty - cost_penalty
+    return (
+        power * 100.0
+        + effect * 1.5
+        - safety_penalty
+        - enrollment_penalty
+        - cost_penalty
+    )
 
 
 def _clone_with_design(
@@ -260,7 +270,9 @@ def _eligibility_from_covariates(config: SimulationConfig) -> list[str]:
         minimum = covariate.params.get("min")
         maximum = covariate.params.get("max")
         if isinstance(minimum, int | float) and isinstance(maximum, int | float):
-            lines.append(f"{covariate.name}: {float(minimum):.1f} to {float(maximum):.1f}")
+            lines.append(
+                f"{covariate.name}: {float(minimum):.1f} to {float(maximum):.1f}"
+            )
         elif isinstance(minimum, int | float):
             lines.append(f"{covariate.name}: >= {float(minimum):.1f}")
         elif isinstance(maximum, int | float):

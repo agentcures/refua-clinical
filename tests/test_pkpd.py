@@ -24,7 +24,9 @@ def test_pk_exposure_increases_with_dose() -> None:
     pk_control = simulate_pk_metrics(
         covariates, arm=control, pk_model=pk_model, duration_days=84, rng=rng
     )
-    pk_low = simulate_pk_metrics(covariates, arm=low, pk_model=pk_model, duration_days=84, rng=rng)
+    pk_low = simulate_pk_metrics(
+        covariates, arm=low, pk_model=pk_model, duration_days=84, rng=rng
+    )
     pk_high = simulate_pk_metrics(
         covariates, arm=high, pk_model=pk_model, duration_days=84, rng=rng
     )
@@ -117,9 +119,15 @@ def test_biologic_pk_supports_route_and_interval_dosing() -> None:
     q2w = ArmSpec("bio_q2w", "Biologic Q2W", 200.0, dosing_interval_hours=336.0)
     q1w = ArmSpec("bio_q1w", "Biologic Q1W", 200.0, dosing_interval_hours=168.0)
 
-    sc_q2w = simulate_pk_metrics(covariates, arm=q2w, pk_model=sc_model, duration_days=84, rng=rng)
-    sc_q1w = simulate_pk_metrics(covariates, arm=q1w, pk_model=sc_model, duration_days=84, rng=rng)
-    iv_q2w = simulate_pk_metrics(covariates, arm=q2w, pk_model=iv_model, duration_days=84, rng=rng)
+    sc_q2w = simulate_pk_metrics(
+        covariates, arm=q2w, pk_model=sc_model, duration_days=84, rng=rng
+    )
+    sc_q1w = simulate_pk_metrics(
+        covariates, arm=q1w, pk_model=sc_model, duration_days=84, rng=rng
+    )
+    iv_q2w = simulate_pk_metrics(
+        covariates, arm=q2w, pk_model=iv_model, duration_days=84, rng=rng
+    )
 
     assert float(sc_q2w.auc.mean()) > 0.0
     assert float(sc_q2w.cmax.mean()) > float(sc_q2w.ctrough.mean())

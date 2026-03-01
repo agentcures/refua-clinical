@@ -50,7 +50,9 @@ def load_mapping(path: str | Path) -> dict[str, Any]:
 def dump_json(path: str | Path, payload: dict[str, Any]) -> None:
     out = Path(path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    out.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
 
 def dump_yaml(path: str | Path, payload: dict[str, Any]) -> None:
@@ -75,7 +77,9 @@ def config_from_mapping(data: dict[str, Any]) -> SimulationConfig:
         covariates.append(
             CovariateSpec(
                 name=_required_str(item, "name"),
-                distribution=_parse_distribution_kind(_required_str(item, "distribution")),
+                distribution=_parse_distribution_kind(
+                    _required_str(item, "distribution")
+                ),
                 params=_mapping(item.get("params")),
             )
         )
@@ -109,7 +113,9 @@ def config_from_mapping(data: dict[str, Any]) -> SimulationConfig:
                 schedule_per_day=int(item.get("schedule_per_day", 1)),
                 is_control=bool(item.get("is_control", False)),
                 dosing_interval_hours=(
-                    float(dosing_interval_raw) if dosing_interval_raw is not None else None
+                    float(dosing_interval_raw)
+                    if dosing_interval_raw is not None
+                    else None
                 ),
             )
         )
@@ -129,7 +135,9 @@ def config_from_mapping(data: dict[str, Any]) -> SimulationConfig:
     costs_raw = _mapping(data.get("costs"))
 
     pk_values = _coerce_numeric_fields(pk_raw, PKModelSpec())
-    pk_values["modality"] = _parse_modality_kind(str(pk_values.get("modality", "small_molecule")))
+    pk_values["modality"] = _parse_modality_kind(
+        str(pk_values.get("modality", "small_molecule"))
+    )
     pk_values["route"] = _parse_route_kind(str(pk_values.get("route", "oral")))
 
     return SimulationConfig(
@@ -232,7 +240,9 @@ def apply_set_overrides(data: dict[str, Any], values: list[str]) -> dict[str, An
     updated = dict(data)
     for item in values:
         if "=" not in item:
-            raise ValueError(f"Invalid --set value '{item}', expected dotted.path=value")
+            raise ValueError(
+                f"Invalid --set value '{item}', expected dotted.path=value"
+            )
         path, raw_value = item.split("=", 1)
         keys = [part for part in path.split(".") if part]
         if not keys:
@@ -311,7 +321,9 @@ def _parse_distribution_kind(raw: str) -> DistributionKind:
     allowed = {"normal", "lognormal", "beta", "uniform", "categorical"}
     if normalized not in allowed:
         values = ", ".join(sorted(allowed))
-        raise ValueError(f"Unsupported covariate distribution '{raw}'. Allowed: {values}")
+        raise ValueError(
+            f"Unsupported covariate distribution '{raw}'. Allowed: {values}"
+        )
     return cast(DistributionKind, normalized)
 
 

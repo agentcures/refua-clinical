@@ -73,8 +73,12 @@ def summarize_admet_profile(profile: dict[str, Any]) -> dict[str, Any]:
         key=lambda item: item["score"],
     )[:8]
 
-    red_flags = [str(item) for item in profile.get("red_flags", []) if isinstance(item, str)]
-    yellow_flags = [str(item) for item in profile.get("yellow_flags", []) if isinstance(item, str)]
+    red_flags = [
+        str(item) for item in profile.get("red_flags", []) if isinstance(item, str)
+    ]
+    yellow_flags = [
+        str(item) for item in profile.get("yellow_flags", []) if isinstance(item, str)
+    ]
 
     return {
         "smiles": profile.get("smiles"),
@@ -112,17 +116,25 @@ def apply_admet_adjustments(
     bioavailability_factor = float(np.clip(0.55 + 0.90 * bio_score, 0.40, 1.20))
     ec50_multiplier = float(np.clip(1.0 + 0.8 * exposure_risk, 1.0, 1.6))
     safety_intercept_shift = float(
-        np.clip(1.8 * safety_risk + 0.18 * critical_count + 0.12 * general_risk, 0.0, 1.8)
+        np.clip(
+            1.8 * safety_risk + 0.18 * critical_count + 0.12 * general_risk, 0.0, 1.8
+        )
     )
     dropout_multiplier = float(
-        np.clip(1.0 + 1.2 * safety_risk + 0.10 * critical_count + 0.25 * general_risk, 1.0, 1.9)
+        np.clip(
+            1.0 + 1.2 * safety_risk + 0.10 * critical_count + 0.25 * general_risk,
+            1.0,
+            1.9,
+        )
     )
 
     payload = config_to_mapping(config)
     payload["pk_model"]["bioavailability"] = float(
         payload["pk_model"]["bioavailability"] * bioavailability_factor
     )
-    payload["pd_model"]["ec50_auc"] = float(payload["pd_model"]["ec50_auc"] * ec50_multiplier)
+    payload["pd_model"]["ec50_auc"] = float(
+        payload["pd_model"]["ec50_auc"] * ec50_multiplier
+    )
     payload["pd_model"]["safety_intercept"] = float(
         payload["pd_model"]["safety_intercept"] + safety_intercept_shift
     )

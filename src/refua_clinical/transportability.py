@@ -24,7 +24,9 @@ def assess_transportability(
         ][:8]
 
     if not columns:
-        raise ValueError("No common numeric columns available for transportability assessment")
+        raise ValueError(
+            "No common numeric columns available for transportability assessment"
+        )
 
     smd_items: list[CovariateSmd] = []
     for column in columns:
@@ -47,7 +49,9 @@ def assess_transportability(
         )
 
     if not smd_items:
-        raise ValueError("Could not compute transportability metrics on selected columns")
+        raise ValueError(
+            "Could not compute transportability metrics on selected columns"
+        )
 
     abs_smd = np.array([item["abs_smd"] for item in smd_items], dtype=float)
     overlap_score = float(np.mean(np.exp(-0.5 * abs_smd**2)))
@@ -107,7 +111,5 @@ def _transportability_recommendation(risk_level: str) -> str:
             "sensitivity analyses before extrapolating decisions."
         )
     if risk_level == "moderate":
-        return (
-            "Apply weighted analyses and verify key subgroup consistency in scenario simulations."
-        )
+        return "Apply weighted analyses and verify key subgroup consistency in scenario simulations."
     return "Current covariate shift appears manageable for cautious transportability assumptions."

@@ -46,7 +46,11 @@ class BiologicsPreset:
         config.pk_model.covariate_effect_weight = 0.12
         config.pk_model.covariate_effect_egfr = 0.08
         config.pk_model.tmdd_strength = max(
-            float(tmdd_strength if tmdd_strength is not None else self.default_tmdd_strength),
+            float(
+                tmdd_strength
+                if tmdd_strength is not None
+                else self.default_tmdd_strength
+            ),
             0.0,
         )
         config.pk_model.tmdd_cavg_ref = 15.0
@@ -106,7 +110,9 @@ def apply_modality_preset(
     preset_impl = _PRESETS.get(key)
     if preset_impl is None:
         allowed = ", ".join(sorted(_PRESETS))
-        raise ValueError(f"Unknown modality preset '{preset}'. Allowed presets: {allowed}")
+        raise ValueError(
+            f"Unknown modality preset '{preset}'. Allowed presets: {allowed}"
+        )
     preset_impl.apply(
         config,
         dosing_interval_hours=dosing_interval_hours,

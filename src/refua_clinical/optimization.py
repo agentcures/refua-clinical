@@ -61,7 +61,9 @@ def optimize_design_space(
     scored = _score_candidates(candidates)
     pareto = _pareto_front(scored)
 
-    best = sorted(scored, key=lambda item: float(item["utility_score"]), reverse=True)[0]
+    best = sorted(scored, key=lambda item: float(item["utility_score"]), reverse=True)[
+        0
+    ]
     return {
         "best_candidate": best,
         "candidates": scored,
@@ -90,7 +92,9 @@ def _clone_for_candidate(
     return config_from_mapping(payload)
 
 
-def _expected_cost(config: SimulationConfig, expected_n: float, interim_mean: float) -> float:
+def _expected_cost(
+    config: SimulationConfig, expected_n: float, interim_mean: float
+) -> float:
     return float(
         expected_n * config.costs.cost_per_patient
         + interim_mean * config.costs.cost_per_interim
@@ -109,7 +113,9 @@ def _score_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
     safety_norm = 1.0 - _minmax(safety)
     cost_norm = 1.0 - _minmax(costs)
 
-    utility = 0.40 * power_norm + 0.25 * effect_norm + 0.20 * safety_norm + 0.15 * cost_norm
+    utility = (
+        0.40 * power_norm + 0.25 * effect_norm + 0.20 * safety_norm + 0.15 * cost_norm
+    )
     for idx, item in enumerate(frame):
         item["utility_score"] = float(utility[idx])
         item["normalized"] = {
@@ -158,7 +164,9 @@ def _pareto_front(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
     front: list[dict[str, Any]] = []
     for candidate in candidates:
         dominated = any(
-            _dominates(other, candidate) for other in candidates if other is not candidate
+            _dominates(other, candidate)
+            for other in candidates
+            if other is not candidate
         )
         if not dominated:
             front.append(candidate)
