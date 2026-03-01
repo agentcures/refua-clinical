@@ -50,6 +50,7 @@ dev = [
   "pytest>=8.0.0",
   "ruff>=0.6.0",
   "mypy>=1.11.0",
+  "pre-commit>=4.5.1",
   "pandas-stubs>=2.2.3.250527",
   "types-PyYAML>=6.0.12.20250915",
   "build>=1.2.2",
