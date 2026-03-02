@@ -111,5 +111,8 @@ def _transportability_recommendation(risk_level: str) -> str:
             "sensitivity analyses before extrapolating decisions."
         )
     if risk_level == "moderate":
-        return "Apply weighted analyses and verify key subgroup consistency in scenario simulations."
+        return (
+            "Apply weighted analyses and verify key subgroup consistency in "
+            "scenario simulations."
+        )
     return "Current covariate shift appears manageable for cautious transportability assumptions."

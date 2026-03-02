@@ -1306,11 +1306,9 @@ class ClinicalTrialManager:
 
             existing = self._find_site_unlocked(trial, resolved_site_id)
             resolved_status = _normalize_site_status(
-                (
-                    str(existing.get("status") or "planned")
-                    if (status is None and existing is not None)
-                    else status
-                )
+                str(existing.get("status") or "planned")
+                if (status is None and existing is not None)
+                else status
             )
             payload = {
                 "site_id": resolved_site_id,
@@ -1519,7 +1517,9 @@ class ClinicalTrialManager:
 
             if self._find_site_unlocked(trial, resolved_site_id) is None:
                 raise ValueError(
-                    f"Unknown site_id '{resolved_site_id}'. Add the site before recording monitoring visits."
+                    "Unknown site_id "
+                    f"'{resolved_site_id}'. Add the site before recording "
+                    "monitoring visits."
                 )
 
             visits = trial.setdefault("monitoring_visits", [])
@@ -1713,7 +1713,9 @@ class ClinicalTrialManager:
                 and self._find_site_unlocked(trial, resolved_site_id) is None
             ):
                 raise ValueError(
-                    f"Unknown site_id '{resolved_site_id}'. Add the site before recording deviations."
+                    "Unknown site_id "
+                    f"'{resolved_site_id}'. Add the site before recording "
+                    "deviations."
                 )
 
             deviations = trial.setdefault("deviations", [])
@@ -1801,7 +1803,9 @@ class ClinicalTrialManager:
                 and self._find_site_unlocked(trial, resolved_site_id) is None
             ):
                 raise ValueError(
-                    f"Unknown site_id '{resolved_site_id}'. Add the site before recording safety events."
+                    "Unknown site_id "
+                    f"'{resolved_site_id}'. Add the site before recording "
+                    "safety events."
                 )
 
             events = trial.setdefault("safety_events", [])
@@ -1876,11 +1880,9 @@ class ClinicalTrialManager:
             if existing is None and resolved_name is None:
                 raise ValueError("name is required when creating a milestone")
             resolved_status = _normalize_milestone_status(
-                (
-                    str(existing.get("status") or "planned")
-                    if (status is None and existing is not None)
-                    else status
-                )
+                str(existing.get("status") or "planned")
+                if (status is None and existing is not None)
+                else status
             )
             if resolved_actual_date and status is None:
                 resolved_status = "completed"
