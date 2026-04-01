@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 DistributionKind = Literal["normal", "lognormal", "beta", "uniform", "categorical"]
-EndpointKind = Literal["continuous", "binary"]
+EndpointKind = Literal["continuous", "binary", "time_to_event", "longitudinal"]
 ModalityKind = Literal["small_molecule", "biologic"]
 RouteKind = Literal["oral", "iv", "sc"]
 EstimandStrategy = Literal[
@@ -16,6 +16,7 @@ EstimandStrategy = Literal[
     "while_on_treatment",
 ]
 AlphaSpendingKind = Literal["obrien_fleming", "pocock", "linear"]
+TransportMethod = Literal["none", "ps_weighted", "entropy_balanced"]
 
 
 @dataclass(slots=True)
@@ -71,6 +72,17 @@ class ArmSpec:
     schedule_per_day: int = 1
     is_control: bool = False
     dosing_interval_hours: float | None = None
+    opens_at_enrollment: int = 0
+    opens_at_interim: int | None = None
+    opens_after_arm_drop: str | None = None
+    closes_at_interim: int | None = None
+    max_patients: int | None = None
+    titration_step_mg: float = 0.0
+    titration_interval_days: int | None = None
+    backfill_enabled: bool = False
+    backfill_target_n: int | None = None
+    backfill_allocation_multiplier: float = 1.0
+    concurrent_control_only: bool = False
 
 
 @dataclass(slots=True)
@@ -78,8 +90,11 @@ class EndpointSpec:
     name: str = "change_from_baseline"
     kind: EndpointKind = "continuous"
     assessment_day: int = 84
+    visit_days: list[int] = field(default_factory=lambda: [28, 56, 84])
+    event_horizon_day: int = 168
     responder_threshold: float = 12.0
     target_difference: float = 6.0
+    target_hazard_ratio: float = 0.75
 
 
 @dataclass(slots=True)
@@ -97,6 +112,8 @@ class AdaptiveDesignSpec:
     interim_every: int = 30
     min_allocation: float = 0.15
     posterior_samples: int = 600
+    allow_arm_dropping: bool = True
+    arm_drop_threshold: float = 0.05
 
 
 @dataclass(slots=True)
@@ -109,6 +126,7 @@ class ExternalControlSpec:
     dynamic_borrowing: bool = True
     commensurability_scale: float = 1.75
     robust_mixture: float = 0.25
+    transport_method: TransportMethod = "none"
 
 
 @dataclass(slots=True)
@@ -136,6 +154,8 @@ class HeterogeneitySpec:
     n_countries: int = 6
     site_sd: float = 1.25
     country_sd: float = 0.80
+    site_startup_delay_mean_days: float = 0.0
+    site_startup_delay_sd_days: float = 0.0
 
 
 @dataclass(slots=True)
@@ -143,6 +163,8 @@ class OperationalCostSpec:
     cost_per_patient: float = 25_000.0
     cost_per_interim: float = 45_000.0
     utility_scale: float = 1.0
+    cost_per_site_activation: float = 85_000.0
+    cost_per_study_month: float = 30_000.0
 
 
 @dataclass(slots=True)
@@ -189,6 +211,13 @@ class ReplicateResult:
     effective_external_weight: float
     decision_cards: list[dict[str, Any]]
     allocation_trace: list[InterimUpdate]
+    event_rate: float | None = None
+    active_arm_ids: list[str] = field(default_factory=list)
+    dropped_arm_ids: list[str] = field(default_factory=list)
+    arm_enrollment_counts: dict[str, int] = field(default_factory=dict)
+    analysis_method: str | None = None
+    effect_measure: str | None = None
+    effect_raw: float | None = None
 
 
 @dataclass(slots=True)
@@ -209,6 +238,9 @@ class CandidateProtocolScore:
     expected_sample_size: float = 0.0
     expected_cost: float = 0.0
     utility: float = 0.0
+    burn_in_n: int = 0
+    min_allocation: float = 0.0
+    success_threshold: float = 0.0
 
 
 @dataclass(slots=True)

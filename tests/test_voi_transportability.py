@@ -16,6 +16,7 @@ def test_voi_returns_recommendation_and_scenarios() -> None:
     payload = estimate_value_of_information(
         config,
         candidate_extra_n=[0, 20],
+        candidate_success_thresholds=[0.95, 0.99],
         replicates_per_scenario=20,
     )
 
@@ -43,10 +44,12 @@ def test_transportability_assessment_reports_shift() -> None:
         }
     )
 
-    payload = assess_transportability(reference, target)
+    payload = assess_transportability(reference, target, method="ps_weighted")
     assert payload["covariate_smd"]
     assert payload["risk_level"] in {"low", "moderate", "high"}
     assert 0.0 <= float(payload["overlap_score"]) <= 1.0
+    assert "weighting" in payload
 
     markdown = transportability_to_markdown(payload)
     assert "Transportability Assessment" in markdown
+    assert "Weighting Repair" in markdown

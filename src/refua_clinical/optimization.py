@@ -16,6 +16,9 @@ def optimize_design_space(
     *,
     candidate_total_n: list[int] | None = None,
     candidate_interims: list[int] | None = None,
+    candidate_burn_in_n: list[int] | None = None,
+    candidate_min_allocations: list[float] | None = None,
+    candidate_success_thresholds: list[float] | None = None,
     replicates_per_candidate: int = 60,
 ) -> dict[str, Any]:
     base_n = max(config.enrollment.total_n, 60)
@@ -23,37 +26,52 @@ def optimize_design_space(
         candidate_total_n = sorted({int(base_n * 0.7), int(base_n), int(base_n * 1.3)})
     if candidate_interims is None:
         candidate_interims = sorted({20, 30, 45})
+    if candidate_burn_in_n is None:
+        candidate_burn_in_n = [int(config.adaptive.burn_in_n)]
+    if candidate_min_allocations is None:
+        candidate_min_allocations = [float(config.adaptive.min_allocation)]
+    if candidate_success_thresholds is None:
+        candidate_success_thresholds = [float(config.stopping.success_posterior_threshold)]
 
     candidates: list[dict[str, Any]] = []
     for total_n in sorted(set(candidate_total_n)):
         for interim_every in sorted(set(candidate_interims)):
-            if interim_every >= total_n:
-                continue
-            candidate_config = _clone_for_candidate(
-                config,
-                total_n=max(total_n, 30),
-                interim_every=max(interim_every, 10),
-                replicates=max(20, replicates_per_candidate),
-            )
-            result = simulate_trials(candidate_config)
-            summary = result.summary
-            expected_n = float(summary.get("expected_sample_size", total_n))
-            interim_mean = float(summary.get("allocation_interims_mean", 0.0))
-            cost = _expected_cost(candidate_config, expected_n, interim_mean)
+            for burn_in_n in sorted(set(candidate_burn_in_n)):
+                for min_allocation in sorted(set(candidate_min_allocations)):
+                    for success_threshold in sorted(set(candidate_success_thresholds)):
+                        if interim_every >= total_n or burn_in_n >= total_n:
+                            continue
+                        candidate_config = _clone_for_candidate(
+                            config,
+                            total_n=max(total_n, 30),
+                            interim_every=max(interim_every, 10),
+                            burn_in_n=max(int(burn_in_n), 10),
+                            min_allocation=float(min_allocation),
+                            success_threshold=float(success_threshold),
+                            replicates=max(20, replicates_per_candidate),
+                        )
+                        result = simulate_trials(candidate_config)
+                        summary = result.summary
+                        expected_n = float(summary.get("expected_sample_size", total_n))
+                        interim_mean = float(summary.get("allocation_interims_mean", 0.0))
+                        cost = _expected_cost(candidate_config, expected_n, interim_mean)
 
-            candidates.append(
-                {
-                    "total_n": total_n,
-                    "interim_every": interim_every,
-                    "power": float(summary["power"]),
-                    "mean_effect": float(summary["mean_effect"]),
-                    "safety_event_rate": float(summary["safety_event_rate"]),
-                    "expected_sample_size": expected_n,
-                    "expected_cost": cost,
-                    "stop_success_rate": float(summary.get("stop_success_rate", 0.0)),
-                    "stop_futility_rate": float(summary.get("stop_futility_rate", 0.0)),
-                }
-            )
+                        candidates.append(
+                            {
+                                "total_n": total_n,
+                                "interim_every": interim_every,
+                                "burn_in_n": int(burn_in_n),
+                                "min_allocation": float(min_allocation),
+                                "success_threshold": float(success_threshold),
+                                "power": float(summary["power"]),
+                                "mean_effect": float(summary["mean_effect"]),
+                                "safety_event_rate": float(summary["safety_event_rate"]),
+                                "expected_sample_size": expected_n,
+                                "expected_cost": cost,
+                                "stop_success_rate": float(summary.get("stop_success_rate", 0.0)),
+                                "stop_futility_rate": float(summary.get("stop_futility_rate", 0.0)),
+                            }
+                        )
 
     if not candidates:
         raise ValueError("No candidate designs available for optimization")
@@ -82,11 +100,17 @@ def _clone_for_candidate(
     *,
     total_n: int,
     interim_every: int,
+    burn_in_n: int,
+    min_allocation: float,
+    success_threshold: float,
     replicates: int,
 ) -> SimulationConfig:
     payload = config_to_mapping(config)
     payload["enrollment"]["total_n"] = int(total_n)
     payload["adaptive"]["interim_every"] = int(interim_every)
+    payload["adaptive"]["burn_in_n"] = int(burn_in_n)
+    payload["adaptive"]["min_allocation"] = float(min_allocation)
+    payload["stopping"]["success_posterior_threshold"] = float(success_threshold)
     payload["replicates"] = int(replicates)
     payload["seed"] = int(config.seed) + int(total_n) + int(interim_every)
     return config_from_mapping(payload)
@@ -182,6 +206,9 @@ def optimization_to_markdown(payload: dict[str, Any]) -> str:
     lines.append("## Best Candidate")
     lines.append(f"- N: {best['total_n']}")
     lines.append(f"- Interim every: {best['interim_every']}")
+    lines.append(f"- Burn-in N: {best['burn_in_n']}")
+    lines.append(f"- Min allocation: {float(best['min_allocation']):.2f}")
+    lines.append(f"- Success threshold: {float(best['success_threshold']):.2f}")
     lines.append(f"- Utility: {float(best['utility_score']):.3f}")
     lines.append(f"- Power: {float(best['power']):.3f}")
     lines.append(f"- Mean effect: {float(best['mean_effect']):.3f}")
@@ -193,6 +220,7 @@ def optimization_to_markdown(payload: dict[str, Any]) -> str:
     for idx, candidate in enumerate(payload.get("pareto_front", []), start=1):
         lines.append(
             f"{idx}. N={candidate['total_n']}, interim={candidate['interim_every']}, "
+            f"burn_in={candidate['burn_in_n']}, min_alloc={float(candidate['min_allocation']):.2f}, "
             f"power={float(candidate['power']):.3f}, "
             f"safety={float(candidate['safety_event_rate']):.3f}, "
             f"cost={float(candidate['expected_cost']):,.0f}"

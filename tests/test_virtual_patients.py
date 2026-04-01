@@ -1,7 +1,10 @@
 import numpy as np
 
 from refua_clinical.models import CovariateSpec, VirtualPopulationSpec
-from refua_clinical.virtual_patients import generate_virtual_population
+from refua_clinical.virtual_patients import (
+    generate_virtual_population,
+    infer_population_spec_from_dataframe,
+)
 
 
 def test_generate_virtual_population_respects_shape_and_correlation() -> None:
@@ -27,3 +30,25 @@ def test_generate_virtual_population_respects_shape_and_correlation() -> None:
     corr = np.corrcoef(pop.table[["age", "weight", "egfr"]].to_numpy().T)
     assert corr[0, 1] > 0.20
     assert corr[0, 2] < -0.10
+
+
+def test_infer_population_spec_supports_categorical_and_missing_columns() -> None:
+    import pandas as pd
+
+    frame = pd.DataFrame(
+        {
+            "age": [55, 60, None, 71],
+            "weight": [70, 74, 77, 81],
+            "region": ["US", "EU", "US", None],
+        }
+    )
+
+    spec = infer_population_spec_from_dataframe(
+        frame,
+        size=200,
+        columns=["age", "weight", "region"],
+    )
+
+    names = [cov.name for cov in spec.covariates]
+    assert "region" in names
+    assert "age_missing" in names

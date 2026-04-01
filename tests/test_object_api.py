@@ -104,11 +104,13 @@ def test_object_api_end_to_end(tmp_path: Path) -> None:
     assert manifest["optimization"] is not None
     assert manifest["voi"] is not None
     assert manifest["advice"] is not None
+    assert manifest["report"] is not None
 
     manifest_path = tmp_path / "workup" / "manifest.json"
     assert manifest_path.exists()
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert "run" in payload
+    assert "report" in payload
 
 
 def test_object_api_biologics_mode_applies_pk_preset() -> None:

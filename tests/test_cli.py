@@ -15,6 +15,7 @@ def test_cli_init_simulate_and_rerun(tmp_path: Path) -> None:
     workup_dir = tmp_path / "workup"
     advice_json_path = tmp_path / "advice.json"
     advice_md_path = tmp_path / "advice.md"
+    report_html_path = tmp_path / "report.html"
     admet_json_path = tmp_path / "admet_profile.json"
 
     rc = main(["init-config", "--output", str(config_path)])
@@ -144,6 +145,8 @@ def test_cli_init_simulate_and_rerun(tmp_path: Path) -> None:
             str(reference_path),
             "--target",
             str(target_path),
+            "--method",
+            "ps_weighted",
             "--output",
             str(transport_path),
         ]
@@ -151,6 +154,7 @@ def test_cli_init_simulate_and_rerun(tmp_path: Path) -> None:
     assert rc == 0
     transport_payload = json.loads(transport_path.read_text(encoding="utf-8"))
     assert "risk_level" in transport_payload
+    assert "weighting" in transport_payload
 
     rc = main(
         [
@@ -176,6 +180,7 @@ def test_cli_init_simulate_and_rerun(tmp_path: Path) -> None:
     assert (workup_dir / "manifest.json").exists()
     assert (workup_dir / "run.json").exists()
     assert (workup_dir / "advice.json").exists()
+    assert (workup_dir / "report.html").exists()
 
     rc = main(
         [
@@ -194,6 +199,26 @@ def test_cli_init_simulate_and_rerun(tmp_path: Path) -> None:
 
     advice_payload = json.loads(advice_json_path.read_text(encoding="utf-8"))
     assert advice_payload["recommendations"]
+
+    rc = main(
+        [
+            "report",
+            "--run",
+            str(run_path),
+            "--optimization",
+            str(optimize_path),
+            "--voi",
+            str(voi_path),
+            "--advice",
+            str(advice_json_path),
+            "--transportability",
+            str(transport_path),
+            "--output",
+            str(report_html_path),
+        ]
+    )
+    assert rc == 0
+    assert report_html_path.exists()
 
 
 def test_cli_simulate_with_refua_integration(tmp_path: Path) -> None:

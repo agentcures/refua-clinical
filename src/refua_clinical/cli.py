@@ -39,6 +39,7 @@ from .modality import apply_modality_preset, list_modality_presets
 from .models import default_simulation_config
 from .optimization import optimization_to_markdown, optimize_design_space
 from .protocol import recommend_protocol, render_protocol_markdown
+from .report import render_workup_html, write_workup_html
 from .refua_bridge import (
     RefuaIntegrationPolicy,
     apply_refua_adjustments,
@@ -142,6 +143,27 @@ def build_parser() -> argparse.ArgumentParser:
         default=80,
         help="Number of replicates for each candidate design",
     )
+    protocol_parser.add_argument(
+        "--candidate-burn-in-n",
+        type=int,
+        nargs="*",
+        default=None,
+        help="Optional candidate burn-in sample sizes before adaptation.",
+    )
+    protocol_parser.add_argument(
+        "--candidate-min-allocations",
+        type=float,
+        nargs="*",
+        default=None,
+        help="Optional candidate minimum allocation floors.",
+    )
+    protocol_parser.add_argument(
+        "--candidate-success-thresholds",
+        type=float,
+        nargs="*",
+        default=None,
+        help="Optional candidate posterior success thresholds.",
+    )
     _add_modality_preset_arguments(protocol_parser)
     protocol_parser.set_defaults(handler=_cmd_protocol)
 
@@ -186,6 +208,27 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional candidate interim cadences",
     )
+    optimize_parser.add_argument(
+        "--candidate-burn-in-n",
+        type=int,
+        nargs="*",
+        default=None,
+        help="Optional candidate burn-in sample sizes before adaptation.",
+    )
+    optimize_parser.add_argument(
+        "--candidate-min-allocations",
+        type=float,
+        nargs="*",
+        default=None,
+        help="Optional candidate minimum allocation floors.",
+    )
+    optimize_parser.add_argument(
+        "--candidate-success-thresholds",
+        type=float,
+        nargs="*",
+        default=None,
+        help="Optional candidate posterior success thresholds.",
+    )
     _add_modality_preset_arguments(optimize_parser)
     optimize_parser.set_defaults(handler=_cmd_optimize)
 
@@ -218,6 +261,20 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional patient expansions over baseline total_n",
     )
+    voi_parser.add_argument(
+        "--success-thresholds",
+        type=float,
+        nargs="*",
+        default=None,
+        help="Optional success posterior thresholds evaluated in VOI scenarios.",
+    )
+    voi_parser.add_argument(
+        "--min-allocations",
+        type=float,
+        nargs="*",
+        default=None,
+        help="Optional minimum allocation floors evaluated in VOI scenarios.",
+    )
     _add_modality_preset_arguments(voi_parser)
     voi_parser.set_defaults(handler=_cmd_voi)
 
@@ -242,6 +299,12 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="*",
         default=None,
         help="Optional covariate columns to assess",
+    )
+    transport_parser.add_argument(
+        "--method",
+        choices=["none", "ps_weighted", "entropy_balanced"],
+        default="none",
+        help="Optional weighting repair method.",
     )
     transport_parser.add_argument(
         "--output",
@@ -418,11 +481,46 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional candidate interim cadences",
     )
     workup_parser.add_argument(
+        "--candidate-burn-in-n",
+        type=int,
+        nargs="*",
+        default=None,
+        help="Optional candidate burn-in sample sizes before adaptation.",
+    )
+    workup_parser.add_argument(
+        "--candidate-min-allocations",
+        type=float,
+        nargs="*",
+        default=None,
+        help="Optional candidate minimum allocation floors.",
+    )
+    workup_parser.add_argument(
+        "--candidate-success-thresholds",
+        type=float,
+        nargs="*",
+        default=None,
+        help="Optional candidate posterior success thresholds.",
+    )
+    workup_parser.add_argument(
         "--voi-extra-n",
         type=int,
         nargs="*",
         default=None,
         help="Optional VOI sample-size expansions",
+    )
+    workup_parser.add_argument(
+        "--voi-success-thresholds",
+        type=float,
+        nargs="*",
+        default=None,
+        help="Optional success thresholds evaluated in VOI scenarios.",
+    )
+    workup_parser.add_argument(
+        "--voi-min-allocations",
+        type=float,
+        nargs="*",
+        default=None,
+        help="Optional minimum allocation floors evaluated in VOI scenarios.",
     )
     workup_parser.add_argument(
         "--voi-replicates-per-scenario",
@@ -465,7 +563,61 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional transportability columns.",
     )
+    workup_parser.add_argument(
+        "--transport-method",
+        choices=["none", "ps_weighted", "entropy_balanced"],
+        default="none",
+        help="Optional transportability weighting repair method.",
+    )
     workup_parser.set_defaults(handler=_cmd_workup)
+
+    report_parser = sub.add_parser(
+        "report",
+        help="Render a portable HTML report from clinical artifacts",
+    )
+    report_parser.add_argument(
+        "--run",
+        type=Path,
+        required=True,
+        help="Run artifact JSON",
+    )
+    report_parser.add_argument(
+        "--protocol",
+        type=Path,
+        default=None,
+        help="Optional protocol JSON",
+    )
+    report_parser.add_argument(
+        "--optimization",
+        type=Path,
+        default=None,
+        help="Optional optimization JSON",
+    )
+    report_parser.add_argument(
+        "--voi",
+        type=Path,
+        default=None,
+        help="Optional VOI JSON",
+    )
+    report_parser.add_argument(
+        "--advice",
+        type=Path,
+        default=None,
+        help="Optional advice JSON",
+    )
+    report_parser.add_argument(
+        "--transportability",
+        type=Path,
+        default=None,
+        help="Optional transportability JSON",
+    )
+    report_parser.add_argument(
+        "--output",
+        type=Path,
+        required=True,
+        help="HTML output path",
+    )
+    report_parser.set_defaults(handler=_cmd_report)
 
     integrate_refua_parser = sub.add_parser(
         "integrate-refua",
@@ -640,6 +792,19 @@ def _cmd_protocol(args: argparse.Namespace) -> int:
     recommendation = recommend_protocol(
         config,
         replicates_per_candidate=max(args.replicates_per_candidate, 20),
+        candidate_burn_in_n=(
+            list(args.candidate_burn_in_n) if args.candidate_burn_in_n else None
+        ),
+        candidate_min_allocations=(
+            list(args.candidate_min_allocations)
+            if args.candidate_min_allocations
+            else None
+        ),
+        candidate_success_thresholds=(
+            list(args.candidate_success_thresholds)
+            if args.candidate_success_thresholds
+            else None
+        ),
     )
 
     payload = {
@@ -683,6 +848,19 @@ def _cmd_optimize(args: argparse.Namespace) -> int:
         candidate_interims=(
             list(args.candidate_interims) if args.candidate_interims else None
         ),
+        candidate_burn_in_n=(
+            list(args.candidate_burn_in_n) if args.candidate_burn_in_n else None
+        ),
+        candidate_min_allocations=(
+            list(args.candidate_min_allocations)
+            if args.candidate_min_allocations
+            else None
+        ),
+        candidate_success_thresholds=(
+            list(args.candidate_success_thresholds)
+            if args.candidate_success_thresholds
+            else None
+        ),
         replicates_per_candidate=max(int(args.replicates_per_candidate), 20),
     )
     dump_json(args.output, payload)
@@ -714,6 +892,12 @@ def _cmd_voi(args: argparse.Namespace) -> int:
     payload = estimate_value_of_information(
         config,
         candidate_extra_n=list(args.extra_n) if args.extra_n else None,
+        candidate_success_thresholds=(
+            list(args.success_thresholds) if args.success_thresholds else None
+        ),
+        candidate_min_allocations=(
+            list(args.min_allocations) if args.min_allocations else None
+        ),
         replicates_per_scenario=max(int(args.replicates_per_scenario), 20),
     )
     dump_json(args.output, payload)
@@ -744,6 +928,7 @@ def _cmd_transportability(args: argparse.Namespace) -> int:
         reference,
         target,
         columns=list(args.columns) if args.columns else None,
+        method=str(args.method),
     )
     dump_json(args.output, payload)
 
@@ -760,6 +945,7 @@ def _cmd_transportability(args: argparse.Namespace) -> int:
                 "risk_level": payload["risk_level"],
                 "overlap_score": float(payload["overlap_score"]),
                 "max_abs_smd": float(payload["max_abs_smd"]),
+                "method": str(args.method),
             },
             indent=2,
         )
@@ -927,6 +1113,19 @@ def _cmd_workup(args: argparse.Namespace) -> int:
         candidate_interims=(
             list(args.candidate_interims) if args.candidate_interims else None
         ),
+        candidate_burn_in_n=(
+            list(args.candidate_burn_in_n) if args.candidate_burn_in_n else None
+        ),
+        candidate_min_allocations=(
+            list(args.candidate_min_allocations)
+            if args.candidate_min_allocations
+            else None
+        ),
+        candidate_success_thresholds=(
+            list(args.candidate_success_thresholds)
+            if args.candidate_success_thresholds
+            else None
+        ),
     )
     protocol_payload = {
         "protocol": recommendation.protocol,
@@ -948,6 +1147,19 @@ def _cmd_workup(args: argparse.Namespace) -> int:
         candidate_interims=(
             list(args.candidate_interims) if args.candidate_interims else None
         ),
+        candidate_burn_in_n=(
+            list(args.candidate_burn_in_n) if args.candidate_burn_in_n else None
+        ),
+        candidate_min_allocations=(
+            list(args.candidate_min_allocations)
+            if args.candidate_min_allocations
+            else None
+        ),
+        candidate_success_thresholds=(
+            list(args.candidate_success_thresholds)
+            if args.candidate_success_thresholds
+            else None
+        ),
         replicates_per_candidate=max(int(args.replicates_per_candidate), 20),
     )
     optimization_path = output_dir / "optimization.json"
@@ -961,6 +1173,12 @@ def _cmd_workup(args: argparse.Namespace) -> int:
     voi_payload = estimate_value_of_information(
         config,
         candidate_extra_n=list(args.voi_extra_n) if args.voi_extra_n else None,
+        candidate_success_thresholds=(
+            list(args.voi_success_thresholds) if args.voi_success_thresholds else None
+        ),
+        candidate_min_allocations=(
+            list(args.voi_min_allocations) if args.voi_min_allocations else None
+        ),
         replicates_per_scenario=max(int(args.voi_replicates_per_scenario), 20),
     )
     voi_path = output_dir / "voi.json"
@@ -978,6 +1196,7 @@ def _cmd_workup(args: argparse.Namespace) -> int:
             reference,
             target,
             columns=list(args.transport_columns) if args.transport_columns else None,
+            method=str(args.transport_method),
         )
         transportability_path = output_dir / "transportability.json"
         transportability_md_path = output_dir / "transportability.md"
@@ -1005,12 +1224,24 @@ def _cmd_workup(args: argparse.Namespace) -> int:
         output_markdown=advice_md_path,
     )
 
+    report_html = render_workup_html(
+        run_payload=run_payload,
+        protocol_payload=protocol_payload,
+        optimization_payload=optimization_payload,
+        voi_payload=voi_payload,
+        advice_payload=advice_payload,
+        transportability_payload=transportability_payload,
+    )
+    report_path = output_dir / "report.html"
+    write_workup_html(report_path, html=report_html)
+
     manifest = {
         "run": str(run_path),
         "protocol": str(protocol_path),
         "optimization": str(optimization_path),
         "voi": str(voi_path),
         "advice": str(advice_path),
+        "report": str(report_path),
         "transportability": (
             str(transportability_path) if transportability_path else None
         ),
@@ -1035,6 +1266,35 @@ def _cmd_workup(args: argparse.Namespace) -> int:
                 "refua_selected_ligand": _mapping(
                     _mapping(run_payload.get("refua")).get("summary")
                 ).get("selected_ligand_id"),
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
+def _cmd_report(args: argparse.Namespace) -> int:
+    run_payload = load_mapping(args.run)
+    protocol_payload = load_optional_json(args.protocol)
+    optimization_payload = load_optional_json(args.optimization)
+    voi_payload = load_optional_json(args.voi)
+    advice_payload = load_optional_json(args.advice)
+    transportability_payload = load_optional_json(args.transportability)
+
+    html = render_workup_html(
+        run_payload=run_payload,
+        protocol_payload=protocol_payload,
+        optimization_payload=optimization_payload,
+        voi_payload=voi_payload,
+        advice_payload=advice_payload,
+        transportability_payload=transportability_payload,
+    )
+    write_workup_html(args.output, html=html)
+    print(
+        json.dumps(
+            {
+                "output": str(args.output),
+                "run_id": run_payload.get("run_id"),
             },
             indent=2,
         )

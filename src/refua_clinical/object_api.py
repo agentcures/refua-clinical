@@ -25,6 +25,7 @@ from .modality import apply_modality_preset
 from .models import ProtocolRecommendation, SimulationConfig, default_simulation_config
 from .optimization import optimization_to_markdown, optimize_design_space
 from .protocol import recommend_protocol, render_protocol_markdown
+from .report import render_workup_html, write_workup_html
 from .refua_bridge import (
     RefuaIntegrationPolicy,
     apply_refua_adjustments,
@@ -162,12 +163,24 @@ class ClinicalWorkup:
         voi_md = out / "voi.md"
         advice_json = out / "advice.json"
         advice_md = out / "advice.md"
+        report_html = out / "report.html"
 
         self.run.save(run_path)
         self.protocol.save(protocol_json, markdown=protocol_md)
         self.optimization.save(optimization_json, markdown=optimization_md)
         self.voi.save(voi_json, markdown=voi_md)
         self.advice.save(advice_json, markdown=advice_md)
+        write_workup_html(
+            report_html,
+            html=render_workup_html(
+                run_payload=self.run.to_dict(),
+                protocol_payload=self.protocol.to_dict(),
+                optimization_payload=self.optimization.to_dict(),
+                voi_payload=self.voi.to_dict(),
+                advice_payload=self.advice.to_dict(),
+                transportability_payload=self.transportability,
+            ),
+        )
 
         transportability_path: str | None = None
         if self.transportability is not None:
@@ -181,6 +194,7 @@ class ClinicalWorkup:
             "optimization": str(optimization_json),
             "voi": str(voi_json),
             "advice": str(advice_json),
+            "report": str(report_html),
             "transportability": transportability_path,
         }
         dump_json(out / "manifest.json", manifest)
@@ -218,12 +232,18 @@ class ClinicalRun:
         replicates_per_candidate: int = 80,
         candidate_total_n: list[int] | None = None,
         candidate_interims: list[int] | None = None,
+        candidate_burn_in_n: list[int] | None = None,
+        candidate_min_allocations: list[float] | None = None,
+        candidate_success_thresholds: list[float] | None = None,
     ) -> ClinicalProtocol:
         recommendation = recommend_protocol(
             self.config,
             replicates_per_candidate=max(20, int(replicates_per_candidate)),
             candidate_total_n=candidate_total_n,
             candidate_interims=candidate_interims,
+            candidate_burn_in_n=candidate_burn_in_n,
+            candidate_min_allocations=candidate_min_allocations,
+            candidate_success_thresholds=candidate_success_thresholds,
         )
         return ClinicalProtocol(recommendation)
 
@@ -233,11 +253,17 @@ class ClinicalRun:
         replicates_per_candidate: int = 60,
         candidate_total_n: list[int] | None = None,
         candidate_interims: list[int] | None = None,
+        candidate_burn_in_n: list[int] | None = None,
+        candidate_min_allocations: list[float] | None = None,
+        candidate_success_thresholds: list[float] | None = None,
     ) -> ClinicalOptimization:
         payload = optimize_design_space(
             self.config,
             candidate_total_n=candidate_total_n,
             candidate_interims=candidate_interims,
+            candidate_burn_in_n=candidate_burn_in_n,
+            candidate_min_allocations=candidate_min_allocations,
+            candidate_success_thresholds=candidate_success_thresholds,
             replicates_per_candidate=max(20, int(replicates_per_candidate)),
         )
         return ClinicalOptimization(payload)
@@ -246,11 +272,15 @@ class ClinicalRun:
         self,
         *,
         extra_n: list[int] | None = None,
+        candidate_success_thresholds: list[float] | None = None,
+        candidate_min_allocations: list[float] | None = None,
         replicates_per_scenario: int = 60,
     ) -> ClinicalVOI:
         payload = estimate_value_of_information(
             self.config,
             candidate_extra_n=extra_n,
+            candidate_success_thresholds=candidate_success_thresholds,
+            candidate_min_allocations=candidate_min_allocations,
             replicates_per_scenario=max(20, int(replicates_per_scenario)),
         )
         return ClinicalVOI(payload)
@@ -291,8 +321,9 @@ class ClinicalRun:
         target: Any,
         *,
         columns: list[str] | None = None,
+        method: str = "none",
     ) -> dict[str, Any]:
-        return assess_transportability(reference, target, columns=columns)
+        return assess_transportability(reference, target, columns=columns, method=method)
 
     def workup(
         self,
@@ -300,7 +331,12 @@ class ClinicalRun:
         replicates_per_candidate: int = 60,
         candidate_total_n: list[int] | None = None,
         candidate_interims: list[int] | None = None,
+        candidate_burn_in_n: list[int] | None = None,
+        candidate_min_allocations: list[float] | None = None,
+        candidate_success_thresholds: list[float] | None = None,
         voi_extra_n: list[int] | None = None,
+        voi_success_thresholds: list[float] | None = None,
+        voi_min_allocations: list[float] | None = None,
         voi_replicates_per_scenario: int = 50,
         include_sensitivity: bool = False,
         sensitivity_replicates: int = 40,
@@ -311,14 +347,22 @@ class ClinicalRun:
             replicates_per_candidate=replicates_per_candidate,
             candidate_total_n=candidate_total_n,
             candidate_interims=candidate_interims,
+            candidate_burn_in_n=candidate_burn_in_n,
+            candidate_min_allocations=candidate_min_allocations,
+            candidate_success_thresholds=candidate_success_thresholds,
         )
         optimization = self.optimize(
             replicates_per_candidate=replicates_per_candidate,
             candidate_total_n=candidate_total_n,
             candidate_interims=candidate_interims,
+            candidate_burn_in_n=candidate_burn_in_n,
+            candidate_min_allocations=candidate_min_allocations,
+            candidate_success_thresholds=candidate_success_thresholds,
         )
         voi = self.value_of_information(
             extra_n=voi_extra_n,
+            candidate_success_thresholds=voi_success_thresholds,
+            candidate_min_allocations=voi_min_allocations,
             replicates_per_scenario=voi_replicates_per_scenario,
         )
         advice = self.advise(

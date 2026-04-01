@@ -18,6 +18,9 @@ def recommend_protocol(
     replicates_per_candidate: int = 80,
     candidate_total_n: list[int] | None = None,
     candidate_interims: list[int] | None = None,
+    candidate_burn_in_n: list[int] | None = None,
+    candidate_min_allocations: list[float] | None = None,
+    candidate_success_thresholds: list[float] | None = None,
 ) -> ProtocolRecommendation:
     base_n = max(config.enrollment.total_n, 60)
     if candidate_total_n is None:
@@ -26,50 +29,65 @@ def recommend_protocol(
         )
     if candidate_interims is None:
         candidate_interims = sorted({20, 30, 45})
+    if candidate_burn_in_n is None:
+        candidate_burn_in_n = [int(config.adaptive.burn_in_n)]
+    if candidate_min_allocations is None:
+        candidate_min_allocations = [float(config.adaptive.min_allocation)]
+    if candidate_success_thresholds is None:
+        candidate_success_thresholds = [float(config.stopping.success_posterior_threshold)]
 
     candidates: list[CandidateProtocolScore] = []
 
     for total_n in candidate_total_n:
         for interim_every in candidate_interims:
-            if interim_every >= total_n:
-                continue
-            candidate_config = _clone_with_design(
-                config,
-                total_n=max(total_n, 30),
-                interim_every=max(interim_every, 10),
-                replicates=max(20, replicates_per_candidate),
-            )
-            result = simulate_trials(candidate_config)
-            power = float(result.summary["power"])
-            effect = float(result.summary["mean_effect"])
-            safety = float(result.summary["safety_event_rate"])
-            expected_sample_size = float(
-                result.summary.get("expected_sample_size", total_n)
-            )
-            expected_cost = float(
-                expected_sample_size * candidate_config.costs.cost_per_patient
-                + float(result.summary.get("allocation_interims_mean", 0.0))
-                * candidate_config.costs.cost_per_interim
-            )
-            utility = _utility(
-                total_n=total_n,
-                power=power,
-                effect=effect,
-                safety=safety,
-                expected_cost=expected_cost,
-            )
-            candidates.append(
-                CandidateProtocolScore(
-                    total_n=total_n,
-                    interim_every=interim_every,
-                    power=power,
-                    expected_effect=effect,
-                    safety_rate=safety,
-                    expected_sample_size=expected_sample_size,
-                    expected_cost=expected_cost,
-                    utility=utility,
-                )
-            )
+            for burn_in_n in candidate_burn_in_n:
+                for min_allocation in candidate_min_allocations:
+                    for success_threshold in candidate_success_thresholds:
+                        if interim_every >= total_n or burn_in_n >= total_n:
+                            continue
+                        candidate_config = _clone_with_design(
+                            config,
+                            total_n=max(total_n, 30),
+                            interim_every=max(interim_every, 10),
+                            burn_in_n=max(int(burn_in_n), 10),
+                            min_allocation=float(min_allocation),
+                            success_threshold=float(success_threshold),
+                            replicates=max(20, replicates_per_candidate),
+                        )
+                        result = simulate_trials(candidate_config)
+                        power = float(result.summary["power"])
+                        effect = float(result.summary["mean_effect"])
+                        safety = float(result.summary["safety_event_rate"])
+                        expected_sample_size = float(
+                            result.summary.get("expected_sample_size", total_n)
+                        )
+                        expected_cost = float(
+                            expected_sample_size * candidate_config.costs.cost_per_patient
+                            + float(result.summary.get("allocation_interims_mean", 0.0))
+                            * candidate_config.costs.cost_per_interim
+                        )
+                        utility = _utility(
+                            total_n=total_n,
+                            power=power,
+                            effect=effect,
+                            safety=safety,
+                            expected_cost=expected_cost,
+                        )
+                        candidates.append(
+                            CandidateProtocolScore(
+                                total_n=total_n,
+                                interim_every=interim_every,
+                                power=power,
+                                expected_effect=effect,
+                                safety_rate=safety,
+                                expected_sample_size=expected_sample_size,
+                                expected_cost=expected_cost,
+                                utility=utility,
+                                burn_in_n=int(burn_in_n),
+                                min_allocation=float(min_allocation),
+                                success_threshold=float(success_threshold),
+                            )
+                        )
 
     if not candidates:
         raise ValueError("No valid protocol candidates were generated")
@@ -80,6 +98,9 @@ def recommend_protocol(
         config,
         total_n=best.total_n,
         interim_every=best.interim_every,
+        burn_in_n=best.burn_in_n,
+        min_allocation=best.min_allocation,
+        success_threshold=best.success_threshold,
         replicates=config.replicates,
     )
 
@@ -107,6 +128,8 @@ def render_protocol_markdown(protocol: dict[str, Any]) -> str:
     lines.append(f"- Randomized, {randomization_mode} multi-arm trial")
     lines.append(f"- Planned enrollment: {design['planned_enrollment']}")
     lines.append(f"- Interim cadence: every {design['interim_every']} patients")
+    lines.append(f"- Burn-in before adaptation: {design['burn_in_n']} patients")
+    lines.append(f"- Minimum arm allocation: {design['min_allocation']:.2f}")
     lines.append(f"- Assessment day: {design['assessment_day']}")
     lines.append("")
 
@@ -138,6 +161,13 @@ def render_protocol_markdown(protocol: dict[str, Any]) -> str:
     endpoint = protocol["endpoint"]
     lines.append(f"- Primary endpoint: {endpoint['name']} ({endpoint['kind']})")
     lines.append(f"- Success threshold: {endpoint['target_difference']}")
+    if endpoint["kind"] == "time_to_event":
+        lines.append(f"- Event horizon day: {endpoint['event_horizon_day']}")
+        lines.append(f"- Target hazard ratio: {endpoint['target_hazard_ratio']:.2f}")
+    if endpoint["kind"] == "longitudinal":
+        lines.append(
+            f"- Planned visit days: {', '.join(str(int(day)) for day in endpoint['visit_days'])}"
+        )
     lines.append("")
 
     lines.append("## Statistical Analysis")
@@ -145,6 +175,7 @@ def render_protocol_markdown(protocol: dict[str, Any]) -> str:
     lines.append(f"- Primary comparison: {stats['primary_comparison']}")
     lines.append(f"- Time-trend adjustment: {stats['time_trend_adjustment']}")
     lines.append(f"- External control borrowing: {stats['external_control']}")
+    lines.append(f"- Success posterior threshold: {stats['success_posterior_threshold']:.2f}")
     lines.append("")
 
     lines.append("## Simulated Operating Characteristics")
@@ -193,12 +224,18 @@ def _clone_with_design(
     *,
     total_n: int,
     interim_every: int,
+    burn_in_n: int,
+    min_allocation: float,
+    success_threshold: float,
     replicates: int,
 ) -> SimulationConfig:
     payload = asdict(config)
     payload["replicates"] = int(replicates)
     payload["enrollment"]["total_n"] = int(total_n)
     payload["adaptive"]["interim_every"] = int(interim_every)
+    payload["adaptive"]["burn_in_n"] = int(burn_in_n)
+    payload["adaptive"]["min_allocation"] = float(min_allocation)
+    payload["stopping"]["success_posterior_threshold"] = float(success_threshold)
     payload["seed"] = int(config.seed) + int(total_n) + int(interim_every)
     return config_from_mapping(payload)
 
@@ -223,6 +260,8 @@ def _build_protocol_payload(
             "adaptive_randomization": bool(config.adaptive.enabled),
             "planned_enrollment": int(config.enrollment.total_n),
             "interim_every": int(config.adaptive.interim_every),
+            "burn_in_n": int(config.adaptive.burn_in_n),
+            "min_allocation": float(config.adaptive.min_allocation),
             "assessment_day": int(config.endpoint.assessment_day),
             "arms": [asdict(arm) for arm in config.arms],
         },
@@ -232,6 +271,9 @@ def _build_protocol_payload(
             "kind": config.endpoint.kind,
             "target_difference": config.endpoint.target_difference,
             "responder_threshold": config.endpoint.responder_threshold,
+            "event_horizon_day": config.endpoint.event_horizon_day,
+            "target_hazard_ratio": config.endpoint.target_hazard_ratio,
+            "visit_days": config.endpoint.visit_days,
         },
         "statistical_analysis": {
             "primary_comparison": "Best treatment arm vs concurrent control",
@@ -245,6 +287,7 @@ def _build_protocol_payload(
                 else "Not used in primary analysis"
             ),
             "alpha": 0.05,
+            "success_posterior_threshold": float(config.stopping.success_posterior_threshold),
         },
         "simulated_performance": {
             "power": best.power,

@@ -64,53 +64,86 @@ def infer_population_spec_from_dataframe(
             "No usable numeric columns found for virtual patient inference"
         )
 
-    clean = frame[columns].dropna().reset_index(drop=True)
-    if clean.empty:
-        raise ValueError("Dataframe has no rows after dropping missing values")
-
     covariates: list[CovariateSpec] = []
+    encoded_columns: dict[str, pd.Series] = {}
     for column in columns:
-        values = clean[column].astype(float)
-        array_values = values.to_numpy(dtype=float)
-        mean = float(values.mean())
-        sd = float(values.std(ddof=1))
-        minimum = float(values.min())
-        maximum = float(values.max())
-        if sd <= 1e-12:
-            skewness = 0.0
-        else:
-            centered = array_values - np.mean(array_values)
-            skewness = float(np.mean((centered / sd) ** 3))
+        series = frame[column]
+        if pd.api.types.is_numeric_dtype(series):
+            values = series.dropna().astype(float)
+            if values.empty:
+                raise ValueError(f"Column '{column}' has no non-missing values")
+            array_values = values.to_numpy(dtype=float)
+            mean = float(values.mean())
+            sd = float(values.std(ddof=1))
+            minimum = float(values.min())
+            maximum = float(values.max())
+            if sd <= 1e-12:
+                skewness = 0.0
+            else:
+                centered = array_values - np.mean(array_values)
+                skewness = float(np.mean((centered / sd) ** 3))
 
-        if minimum > 0 and sd > 0 and skewness > 0.8:
-            cv = float(sd / max(mean, 1e-6))
+            if minimum > 0 and sd > 0 and skewness > 0.8:
+                cv = float(sd / max(mean, 1e-6))
+                covariates.append(
+                    CovariateSpec(
+                        name=column,
+                        distribution="lognormal",
+                        params={
+                            "mean": mean,
+                            "cv": max(cv, 0.05),
+                            "min": minimum,
+                            "max": maximum,
+                        },
+                    )
+                )
+            else:
+                covariates.append(
+                    CovariateSpec(
+                        name=column,
+                        distribution="normal",
+                        params={
+                            "mean": mean,
+                            "sd": max(sd, 1e-6),
+                            "min": minimum,
+                            "max": maximum,
+                        },
+                    )
+                )
+            encoded_columns[column] = series.fillna(mean).astype(float)
+        else:
+            values = series.dropna().astype(str).str.strip()
+            values = values[values != ""]
+            if values.empty:
+                raise ValueError(f"Column '{column}' has no usable categorical values")
+            distribution = values.value_counts(normalize=True)
             covariates.append(
                 CovariateSpec(
                     name=column,
-                    distribution="lognormal",
+                    distribution="categorical",
                     params={
-                        "mean": mean,
-                        "cv": max(cv, 0.05),
-                        "min": minimum,
-                        "max": maximum,
+                        "categories": distribution.index.tolist(),
+                        "probs": distribution.to_numpy(dtype=float).tolist(),
                     },
-                )
+                ),
             )
-        else:
+            encoded, _ = pd.factorize(series.fillna("__missing__").astype(str))
+            encoded_columns[column] = pd.Series(encoded.astype(float), index=series.index)
+
+        missing_rate = float(series.isna().mean())
+        if 0.0 < missing_rate < 1.0:
+            indicator_name = f"{column}_missing"
             covariates.append(
                 CovariateSpec(
-                    name=column,
-                    distribution="normal",
-                    params={
-                        "mean": mean,
-                        "sd": max(sd, 1e-6),
-                        "min": minimum,
-                        "max": maximum,
-                    },
+                    name=indicator_name,
+                    distribution="categorical",
+                    params={"categories": [0, 1], "probs": [1.0 - missing_rate, missing_rate]},
                 )
             )
+            encoded_columns[indicator_name] = series.isna().astype(float)
 
-    correlation = clean.corr(numeric_only=True).to_numpy(dtype=float)
+    encoded_frame = pd.DataFrame({name: encoded_columns[name] for name in [cov.name for cov in covariates]})
+    correlation = encoded_frame.corr(numeric_only=True).to_numpy(dtype=float)
     return VirtualPopulationSpec(
         size=size, covariates=covariates, correlation=correlation.tolist()
     )

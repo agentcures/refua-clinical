@@ -96,7 +96,7 @@ class _RouteProfile(Protocol):
     def concentration_metrics(
         self,
         *,
-        arm: ArmSpec,
+        dose_mg: float,
         v: np.ndarray,
         k: np.ndarray,
         tau: float,
@@ -111,7 +111,7 @@ class _IVRouteProfile:
     def concentration_metrics(
         self,
         *,
-        arm: ArmSpec,
+        dose_mg: float,
         v: np.ndarray,
         k: np.ndarray,
         tau: float,
@@ -120,7 +120,7 @@ class _IVRouteProfile:
         modality: _ModalityProfile,
     ) -> tuple[np.ndarray, np.ndarray]:
         acc_elim = 1.0 / np.clip(1.0 - np.exp(-k * tau), 1e-6, None)
-        cmax = arm.dose_mg / np.clip(v, 1e-6, None) * acc_elim
+        cmax = float(dose_mg) / np.clip(v, 1e-6, None) * acc_elim
         ctrough = cmax * np.exp(-k * tau)
         return cmax, ctrough
 
@@ -130,7 +130,7 @@ class _FirstOrderAbsorptionRouteProfile:
     def concentration_metrics(
         self,
         *,
-        arm: ArmSpec,
+        dose_mg: float,
         v: np.ndarray,
         k: np.ndarray,
         tau: float,
@@ -140,7 +140,7 @@ class _FirstOrderAbsorptionRouteProfile:
     ) -> tuple[np.ndarray, np.ndarray]:
         ka = modality.limit_ka(ka_per_hour)
         delta = np.clip(ka - k, 1e-6, None)
-        term = bioavailability * arm.dose_mg * ka / (np.clip(v, 1e-6, None) * delta)
+        term = bioavailability * float(dose_mg) * ka / (np.clip(v, 1e-6, None) * delta)
         acc_elim = 1.0 / np.clip(1.0 - np.exp(-k * tau), 1e-6, None)
         acc_abs = 1.0 / np.clip(1.0 - np.exp(-ka * tau), 1e-6, None)
 
@@ -192,7 +192,7 @@ def simulate_pk_metrics(
     modality = _resolve_modality_profile(modality_key)
     route = _resolve_route_profile(route_key)
 
-    tau, total_dose = _dosing_schedule(arm=arm, duration_days=duration_days)
+    tau, total_dose, terminal_dose = _dosing_schedule(arm=arm, duration_days=duration_days)
     bioavailability = modality.effective_bioavailability(
         route=route_key,
         base=float(pk_model.bioavailability),
@@ -210,7 +210,7 @@ def simulate_pk_metrics(
 
     k = np.clip(cl_effective / np.clip(v, 1e-6, None), 1e-6, None)
     cmax, ctrough = route.concentration_metrics(
-        arm=arm,
+        dose_mg=terminal_dose,
         v=v,
         k=k,
         tau=tau,
@@ -227,7 +227,7 @@ def simulate_pk_metrics(
     )
 
 
-def _dosing_schedule(*, arm: ArmSpec, duration_days: int) -> tuple[float, float]:
+def _dosing_schedule(*, arm: ArmSpec, duration_days: int) -> tuple[float, float, float]:
     if arm.dosing_interval_hours is not None and float(arm.dosing_interval_hours) > 0.0:
         tau = max(float(arm.dosing_interval_hours), 1e-6)
         administrations = max(int(np.ceil(duration_days * 24.0 / tau)), 1)
@@ -235,8 +235,24 @@ def _dosing_schedule(*, arm: ArmSpec, duration_days: int) -> tuple[float, float]
         schedule = max(int(arm.schedule_per_day), 1)
         tau = 24.0 / float(schedule)
         administrations = max(int(duration_days * schedule), 1)
+    if (
+        float(arm.titration_step_mg) != 0.0
+        and arm.titration_interval_days is not None
+        and int(arm.titration_interval_days) > 0
+    ):
+        titration_interval_hours = float(int(arm.titration_interval_days) * 24)
+        step_every = max(int(np.ceil(titration_interval_hours / tau)), 1)
+        step_index = np.arange(administrations, dtype=int) // step_every
+        doses = np.maximum(
+            float(arm.dose_mg) + float(arm.titration_step_mg) * step_index.astype(float),
+            0.0,
+        )
+        total_dose = float(np.sum(doses))
+        terminal_dose = float(doses[-1])
+        return tau, total_dose, terminal_dose
+
     total_dose = float(arm.dose_mg) * float(administrations)
-    return tau, total_dose
+    return tau, total_dose, float(arm.dose_mg)
 
 
 def _resolve_modality_profile(raw: str) -> _ModalityProfile:
@@ -268,6 +284,10 @@ def simulate_pd_outcomes(
         raise ValueError("Need at least one patient for PD simulation")
 
     baseline = rng.normal(pd_model.baseline_mean, pd_model.baseline_sd, size=n)
+    visit_days = sorted(set(int(day) for day in endpoint.visit_days if int(day) > 0))
+    if not visit_days:
+        visit_days = [int(endpoint.assessment_day)]
+    last_visit_day = max(max(visit_days), int(endpoint.assessment_day), 1)
     placebo = pd_model.placebo_improvement_per_day * endpoint.assessment_day
 
     treatment_effect = _emax(pk.auc, pd_model.emax, pd_model.ec50_auc)
@@ -296,13 +316,68 @@ def simulate_pd_outcomes(
 
     drop_base = 0.08 + 0.35 * safety_prob + 0.10 * (drift_block > 0).astype(float)
     dropped_out = rng.binomial(1, np.clip(drop_base, 0.0, 0.95), size=n).astype(bool)
+    dropout_day = np.full(n, float(last_visit_day), dtype=float)
+    if len(visit_days) > 1:
+        candidate_days = np.array(visit_days[:-1], dtype=float)
+        for idx in np.where(dropped_out)[0]:
+            dropout_day[idx] = float(rng.choice(candidate_days))
+    else:
+        dropout_day[dropped_out] = float(visit_days[0])
 
+    event_observed = np.zeros(n, dtype=bool)
+    visit_values: np.ndarray
     if endpoint.kind == "binary":
         responders = change >= endpoint.responder_threshold
         endpoint_value = responders.astype(float)
+        visit_values = np.full(n, None, dtype=object)
+    elif endpoint.kind == "time_to_event":
+        base_hazard = 1.0 / max(float(endpoint.event_horizon_day) * 0.75, 1.0)
+        age = _series(covariates, "age", 60.0)
+        biomarker = _series(covariates, "biomarker_z", default=0.0)
+        benefit_scale = np.clip(change / max(abs(endpoint.target_difference), 1.0), -2.5, 2.5)
+        target_hr = float(np.clip(endpoint.target_hazard_ratio, 0.10, 1.50))
+        treatment_hr = np.exp(np.log(max(target_hr, 1e-3)) * benefit_scale)
+        hazard = (
+            base_hazard
+            * np.exp(0.22 * ((age - 60.0) / 10.0) - 0.12 * biomarker)
+            * treatment_hr
+            * (1.0 + 0.35 * safety_prob)
+        )
+        event_time = rng.exponential(scale=1.0 / np.clip(hazard, 1e-6, None), size=n)
+        horizon = float(max(endpoint.event_horizon_day, 1))
+        event_observed = event_time <= horizon
+        endpoint_value = np.minimum(event_time, horizon)
+        responders = ~event_observed
+        change = endpoint_value
+        final_score = endpoint_value
+        visit_values = np.full(n, None, dtype=object)
+    elif endpoint.kind == "longitudinal":
+        profiles: list[list[dict[str, float]]] = []
+        response_curve = 1.0 - np.exp(-3.0 * (np.asarray(visit_days, dtype=float) / float(last_visit_day)))
+        for idx in range(n):
+            patient_profile: list[dict[str, float]] = []
+            for day, curve_value in zip(visit_days, response_curve, strict=True):
+                day_change = (
+                    pd_model.placebo_improvement_per_day * float(day)
+                    + float(treatment_effect[idx]) * float(curve_value)
+                    + float(effect_modifier[idx]) * np.sqrt(float(day) / float(last_visit_day))
+                    - float(drift_penalty[idx]) * float(day) / float(last_visit_day)
+                        + float(rng.normal(0.0, pd_model.residual_sd * 0.5))
+                )
+                patient_profile.append({"day": float(day), "change": float(day_change)})
+            profiles.append(patient_profile)
+        visit_values = profiles
+        endpoint_value = np.array(
+            [float(profile[-1]["change"]) for profile in profiles],
+            dtype=float,
+        )
+        change = endpoint_value
+        final_score = baseline - endpoint_value
+        responders = endpoint_value >= endpoint.target_difference
     else:
         responders = change >= endpoint.target_difference
         endpoint_value = change
+        visit_values = np.full(n, None, dtype=object)
 
     return pd.DataFrame(
         {
@@ -313,6 +388,9 @@ def simulate_pd_outcomes(
             "responder": responders,
             "safety_event": safety_event,
             "dropped_out": dropped_out,
+            "dropout_day": dropout_day,
+            "event_observed": event_observed,
+            "visit_values": visit_values,
             "auc": pk.auc,
             "cavg": pk.cavg,
             "cmax": pk.cmax,

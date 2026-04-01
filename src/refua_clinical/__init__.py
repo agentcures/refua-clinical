@@ -28,6 +28,7 @@ from .models import (
     RouteKind,
     SimulationConfig,
     StoppingSpec,
+    TransportMethod,
     TrialSimulationResult,
     VirtualPopulationSpec,
 )
@@ -95,6 +96,7 @@ __all__ = [
     "RouteKind",
     "SimulationConfig",
     "StoppingSpec",
+    "TransportMethod",
     "TrialSimulationResult",
     "VirtualPopulation",
     "VirtualPopulationSpec",

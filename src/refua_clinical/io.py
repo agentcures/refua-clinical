@@ -29,6 +29,7 @@ from .models import (
     RouteKind,
     SimulationConfig,
     StoppingSpec,
+    TransportMethod,
     VirtualPopulationSpec,
 )
 
@@ -117,6 +118,43 @@ def config_from_mapping(data: dict[str, Any]) -> SimulationConfig:
                     if dosing_interval_raw is not None
                     else None
                 ),
+                opens_at_enrollment=int(item.get("opens_at_enrollment", 0)),
+                opens_at_interim=(
+                    int(item["opens_at_interim"])
+                    if item.get("opens_at_interim") is not None
+                    else None
+                ),
+                opens_after_arm_drop=(
+                    str(item["opens_after_arm_drop"])
+                    if item.get("opens_after_arm_drop") is not None
+                    else None
+                ),
+                closes_at_interim=(
+                    int(item["closes_at_interim"])
+                    if item.get("closes_at_interim") is not None
+                    else None
+                ),
+                max_patients=(
+                    int(item["max_patients"])
+                    if item.get("max_patients") is not None
+                    else None
+                ),
+                titration_step_mg=float(item.get("titration_step_mg", 0.0)),
+                titration_interval_days=(
+                    int(item["titration_interval_days"])
+                    if item.get("titration_interval_days") is not None
+                    else None
+                ),
+                backfill_enabled=bool(item.get("backfill_enabled", False)),
+                backfill_target_n=(
+                    int(item["backfill_target_n"])
+                    if item.get("backfill_target_n") is not None
+                    else None
+                ),
+                backfill_allocation_multiplier=float(
+                    item.get("backfill_allocation_multiplier", 1.0)
+                ),
+                concurrent_control_only=bool(item.get("concurrent_control_only", False)),
             )
         )
 
@@ -158,8 +196,16 @@ def config_from_mapping(data: dict[str, Any]) -> SimulationConfig:
             name=str(endpoint_raw.get("name", "change_from_baseline")),
             kind=_parse_endpoint_kind(str(endpoint_raw.get("kind", "continuous"))),
             assessment_day=int(endpoint_raw.get("assessment_day", 84)),
+            visit_days=_parse_int_list(
+                endpoint_raw.get("visit_days"),
+                default=[28, 56, int(endpoint_raw.get("assessment_day", 84))],
+            ),
+            event_horizon_day=int(
+                endpoint_raw.get("event_horizon_day", endpoint_raw.get("assessment_day", 168))
+            ),
             responder_threshold=float(endpoint_raw.get("responder_threshold", 12.0)),
             target_difference=float(endpoint_raw.get("target_difference", 6.0)),
+            target_hazard_ratio=float(endpoint_raw.get("target_hazard_ratio", 0.75)),
         ),
         enrollment=EnrollmentSpec(
             total_n=int(enrollment_raw.get("total_n", 180)),
@@ -173,6 +219,8 @@ def config_from_mapping(data: dict[str, Any]) -> SimulationConfig:
             interim_every=int(adaptive_raw.get("interim_every", 30)),
             min_allocation=float(adaptive_raw.get("min_allocation", 0.15)),
             posterior_samples=int(adaptive_raw.get("posterior_samples", 600)),
+            allow_arm_dropping=bool(adaptive_raw.get("allow_arm_dropping", True)),
+            arm_drop_threshold=float(adaptive_raw.get("arm_drop_threshold", 0.05)),
         ),
         external_control=ExternalControlSpec(
             enabled=bool(external_control_raw.get("enabled", False)),
@@ -185,6 +233,9 @@ def config_from_mapping(data: dict[str, Any]) -> SimulationConfig:
                 external_control_raw.get("commensurability_scale", 1.75)
             ),
             robust_mixture=float(external_control_raw.get("robust_mixture", 0.25)),
+            transport_method=_parse_transport_method(
+                str(external_control_raw.get("transport_method", "none"))
+            ),
         ),
         estimand=EstimandSpec(
             strategy=_parse_estimand_strategy(
@@ -216,11 +267,21 @@ def config_from_mapping(data: dict[str, Any]) -> SimulationConfig:
             n_countries=int(heterogeneity_raw.get("n_countries", 6)),
             site_sd=float(heterogeneity_raw.get("site_sd", 1.25)),
             country_sd=float(heterogeneity_raw.get("country_sd", 0.80)),
+            site_startup_delay_mean_days=float(
+                heterogeneity_raw.get("site_startup_delay_mean_days", 0.0)
+            ),
+            site_startup_delay_sd_days=float(
+                heterogeneity_raw.get("site_startup_delay_sd_days", 0.0)
+            ),
         ),
         costs=OperationalCostSpec(
             cost_per_patient=float(costs_raw.get("cost_per_patient", 25_000.0)),
             cost_per_interim=float(costs_raw.get("cost_per_interim", 45_000.0)),
             utility_scale=float(costs_raw.get("utility_scale", 1.0)),
+            cost_per_site_activation=float(
+                costs_raw.get("cost_per_site_activation", 85_000.0)
+            ),
+            cost_per_study_month=float(costs_raw.get("cost_per_study_month", 30_000.0)),
         ),
         arms=arms,
     )
@@ -329,8 +390,11 @@ def _parse_distribution_kind(raw: str) -> DistributionKind:
 
 def _parse_endpoint_kind(raw: str) -> EndpointKind:
     normalized = raw.strip().lower()
-    if normalized not in {"continuous", "binary"}:
-        raise ValueError("endpoint.kind must be either 'continuous' or 'binary'")
+    if normalized not in {"continuous", "binary", "time_to_event", "longitudinal"}:
+        raise ValueError(
+            "endpoint.kind must be one of "
+            "'continuous', 'binary', 'time_to_event', or 'longitudinal'"
+        )
     return cast(EndpointKind, normalized)
 
 
@@ -369,3 +433,23 @@ def _parse_alpha_spending(raw: str) -> AlphaSpendingKind:
         values = ", ".join(sorted(allowed))
         raise ValueError(f"stopping.alpha_spending must be one of: {values}")
     return cast(AlphaSpendingKind, normalized)
+
+
+def _parse_transport_method(raw: str) -> TransportMethod:
+    normalized = raw.strip().lower()
+    allowed = {"none", "ps_weighted", "entropy_balanced"}
+    if normalized not in allowed:
+        values = ", ".join(sorted(allowed))
+        raise ValueError(f"external_control.transport_method must be one of: {values}")
+    return cast(TransportMethod, normalized)
+
+
+def _parse_int_list(value: Any, *, default: list[int]) -> list[int]:
+    if value is None:
+        return sorted(set(int(item) for item in default if int(item) > 0))
+    if not isinstance(value, list):
+        raise ValueError("endpoint.visit_days must be a list of integers")
+    parsed = sorted(set(int(item) for item in value if int(item) > 0))
+    if not parsed:
+        raise ValueError("endpoint.visit_days must contain at least one positive day")
+    return parsed
