@@ -9,6 +9,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from .analysis import select_best_treatment_result
 from .estimands import apply_estimand
 from .models import (
     ArmSpec,
@@ -17,7 +18,7 @@ from .models import (
     SimulationConfig,
     TrialSimulationResult,
 )
-from .pkpd import simulate_pd_outcomes, simulate_pk_metrics, two_arm_test
+from .pkpd import simulate_pd_outcomes, simulate_pk_metrics
 from .stopping import evaluate_interim_decision
 from .virtual_patients import generate_virtual_population
 
@@ -38,6 +39,7 @@ def simulate_trials(config: SimulationConfig) -> TrialSimulationResult:
         )
 
     summary = summarize_simulation(replicates)
+    summary["endpoint_kind"] = config.endpoint.kind
     run_id = _build_run_id(config.trial_id)
     return TrialSimulationResult(
         run_id=run_id, config=config, summary=summary, replicates=replicates
@@ -68,8 +70,34 @@ def summarize_simulation(replicates: list[ReplicateResult]) -> dict[str, Any]:
     ext_weight = np.array(
         [rep.effective_external_weight for rep in replicates], dtype=float
     )
+    raw_effects = np.array(
+        [
+            float(rep.effect_raw)
+            if rep.effect_raw is not None and np.isfinite(float(rep.effect_raw))
+            else float("nan")
+            for rep in replicates
+        ],
+        dtype=float,
+    )
+    event_rates = np.array(
+        [
+            float(rep.event_rate)
+            if rep.event_rate is not None and np.isfinite(float(rep.event_rate))
+            else float("nan")
+            for rep in replicates
+        ],
+        dtype=float,
+    )
+    active_arm_counts = np.array(
+        [float(len(rep.active_arm_ids)) for rep in replicates],
+        dtype=float,
+    )
+    dropped_arm_counts = np.array(
+        [float(len(rep.dropped_arm_ids)) for rep in replicates],
+        dtype=float,
+    )
 
-    return {
+    summary = {
         "replicates": int(len(replicates)),
         "power": float(np.nanmean(target_hits)),
         "mean_effect": float(np.nanmean(effects)),
@@ -86,7 +114,19 @@ def summarize_simulation(replicates: list[ReplicateResult]) -> dict[str, Any]:
         "stop_success_rate": float(np.nanmean(stop_success)),
         "stop_futility_rate": float(np.nanmean(stop_futility)),
         "effective_external_weight_mean": float(np.nanmean(ext_weight)),
+        "active_arm_count_mean": float(np.nanmean(active_arm_counts)),
+        "dropped_arm_count_mean": float(np.nanmean(dropped_arm_counts)),
+        "endpoint_kind": str(replicates[0].decision_cards[0].get("endpoint_kind"))
+        if replicates[0].decision_cards
+        else None,
+        "analysis_method": replicates[0].analysis_method,
+        "effect_measure": replicates[0].effect_measure,
     }
+    if np.isfinite(event_rates).any():
+        summary["event_rate"] = float(np.nanmean(event_rates))
+    if np.isfinite(raw_effects).any():
+        summary["mean_effect_raw"] = float(np.nanmean(raw_effects))
+    return summary
 
 
 def trial_result_to_mapping(result: TrialSimulationResult) -> dict[str, Any]:
@@ -110,6 +150,13 @@ def trial_result_to_mapping(result: TrialSimulationResult) -> dict[str, Any]:
                 "effective_external_weight": rep.effective_external_weight,
                 "decision_cards": rep.decision_cards,
                 "allocation_trace": [asdict(update) for update in rep.allocation_trace],
+                "event_rate": rep.event_rate,
+                "active_arm_ids": rep.active_arm_ids,
+                "dropped_arm_ids": rep.dropped_arm_ids,
+                "arm_enrollment_counts": rep.arm_enrollment_counts,
+                "analysis_method": rep.analysis_method,
+                "effect_measure": rep.effect_measure,
+                "effect_raw": rep.effect_raw,
             }
             for rep in result.replicates
         ],
@@ -147,25 +194,41 @@ def _simulate_one_replicate(
     enrolled_rows: list[dict[str, Any]] = []
     allocation_trace: list[InterimUpdate] = []
     decision_cards: list[dict[str, Any]] = []
+    arm_counts = {arm.arm_id: 0 for arm in config.arms}
+    dropped_arm_ids: set[str] = set()
+    arm_lookup = {arm.arm_id: arm for arm in config.arms}
+    arm_activation_enrollment: dict[str, int] = {}
 
     stop_reason: str | None = None
     stop_interim_index: int | None = None
     interim_count = 0
 
     for idx in range(total_n):
-        arm_id = _sample_arm_id(config.arms, allocation, rng)
+        active_arm_ids = _active_arm_ids(
+            config.arms,
+            enrolled_n=idx,
+            interim_index=interim_count,
+            dropped_arm_ids=dropped_arm_ids,
+            arm_counts=arm_counts,
+        )
+        active_arms = [arm for arm in config.arms if arm.arm_id in active_arm_ids]
+        for active_arm_id in active_arm_ids:
+            arm_activation_enrollment.setdefault(active_arm_id, idx + 1)
+        if not any(not arm.is_control for arm in active_arms):
+            stop_reason = "no_active_treatment"
+            stop_interim_index = interim_count if interim_count > 0 else None
+            break
+
+        allocation = _normalize_allocation_for_active_arms(
+            allocation,
+            active_arms,
+            arm_counts=arm_counts,
+        )
+        arm_id = _sample_arm_id(active_arms, allocation, rng)
+        arm_counts[arm_id] = arm_counts.get(arm_id, 0) + 1
         arm_outcome = potential_outcomes[arm_id].iloc[idx]
 
-        rescue_prob = float(
-            np.clip(
-                0.04
-                + 0.18
-                * float(arm_outcome["change"] < config.endpoint.target_difference)
-                + 0.16 * float(arm_outcome["safety_event"]),
-                0.0,
-                0.90,
-            )
-        )
+        rescue_prob = _rescue_probability(config, arm_outcome)
         rescue_use = bool(rng.binomial(1, rescue_prob))
 
         row = {
@@ -177,11 +240,28 @@ def _simulate_one_replicate(
             "arm_id": arm_id,
             "endpoint_value": float(arm_outcome["endpoint_value"]),
             "change": float(arm_outcome["change"]),
+            "baseline": float(arm_outcome["baseline"]),
+            "final_score": float(arm_outcome["final_score"]),
             "responder": bool(arm_outcome["responder"]),
             "safety_event": bool(arm_outcome["safety_event"]),
             "dropped_out": bool(arm_outcome["dropped_out"]),
             "rescue_use": rescue_use,
+            "event_observed": bool(arm_outcome.get("event_observed", False)),
+            "visit_values": arm_outcome.get("visit_values"),
+            "dropout_day": arm_outcome.get("dropout_day"),
+            "auc": float(arm_outcome["auc"]),
+            "cavg": float(arm_outcome["cavg"]),
+            "cmax": float(arm_outcome["cmax"]),
+            "ctrough": float(arm_outcome["ctrough"]),
         }
+        for column, value in sample.iloc[idx].items():
+            if column in {
+                "patient_id",
+                "site_id",
+                "country_id",
+            } or column in row:
+                continue
+            row[str(column)] = _coerce_numpy_scalar(value)
         enrolled_rows.append(row)
 
         should_adapt = (
@@ -200,7 +280,36 @@ def _simulate_one_replicate(
                 estimand=config.estimand,
             )
 
-            allocation, posterior = _adaptive_allocation(config, analysis, rng)
+            allocation, posterior = _adaptive_allocation(
+                config,
+                analysis,
+                rng,
+                active_arm_ids=active_arm_ids,
+            )
+            dropped_now = _dropped_treatment_arms(
+                config,
+                posterior=posterior,
+                arm_counts=arm_counts,
+                active_arm_ids=active_arm_ids,
+            )
+            if dropped_now:
+                dropped_arm_ids.update(dropped_now)
+                allocation = _normalize_allocation_for_active_arms(
+                    allocation,
+                    [
+                        arm
+                        for arm in config.arms
+                        if arm.arm_id
+                        in _active_arm_ids(
+                            config.arms,
+                            enrolled_n=idx + 1,
+                            interim_index=interim_count,
+                            dropped_arm_ids=dropped_arm_ids,
+                            arm_counts=arm_counts,
+                        )
+                    ],
+                    arm_counts=arm_counts,
+                )
             allocation_trace.append(
                 InterimUpdate(
                     enrolled_n=idx + 1,
@@ -219,7 +328,13 @@ def _simulate_one_replicate(
                 stopping=config.stopping,
                 external_control=config.external_control,
                 rng=rng,
+                endpoint=config.endpoint,
+                arm_lookup=arm_lookup,
+                arm_activation_enrollment=arm_activation_enrollment,
             )
+            decision["endpoint_kind"] = config.endpoint.kind
+            decision["dropped_arms"] = sorted(dropped_now)
+            decision["active_arms"] = sorted(active_arm_ids)
             decision_cards.append(decision)
 
             if bool(decision.get("stop", False)):
@@ -236,30 +351,16 @@ def _simulate_one_replicate(
         estimand=config.estimand,
     )
 
-    treatment_arm_id = _best_treatment_arm(analysis_final, control_arm.arm_id)
-
-    treatment_values = analysis_final.loc[
-        analysis_final["arm_id"] == treatment_arm_id,
-        "analysis_value",
-    ].to_numpy(dtype=float)
-    control_values = analysis_final.loc[
-        analysis_final["arm_id"] == control_arm.arm_id,
-        "analysis_value",
-    ].to_numpy(dtype=float)
-
-    effect, p_value, effective_weight = two_arm_test(
-        treatment=treatment_values,
-        control=control_values,
-        external_control_n=(
-            config.external_control.n if config.external_control.enabled else 0
-        ),
-        external_control_mean=config.external_control.mean,
-        external_control_std=config.external_control.std,
-        external_control_weight=config.external_control.weight,
-        dynamic_borrowing=config.external_control.dynamic_borrowing,
-        commensurability_scale=config.external_control.commensurability_scale,
-        robust_mixture=config.external_control.robust_mixture,
+    best_result = select_best_treatment_result(
+        analysis_final,
+        endpoint=config.endpoint,
+        control_arm_id=control_arm.arm_id,
+        treatment_ids=treatment_ids,
+        external_control=config.external_control,
+        arm_lookup=arm_lookup,
+        arm_activation_enrollment=arm_activation_enrollment,
     )
+    treatment_arm_id = best_result.treatment_id
 
     responders_t = float(
         analysis_final.loc[
@@ -276,21 +377,35 @@ def _simulate_one_replicate(
     safety_rate = (
         float(enrolled["safety_event"].mean()) if not enrolled.empty else float("nan")
     )
+    event_rate = (
+        float(enrolled["event_observed"].mean())
+        if "event_observed" in enrolled.columns and not enrolled.empty
+        else None
+    )
+    final_active_arm_ids = sorted(
+        _active_arm_ids(
+            config.arms,
+            enrolled_n=len(enrolled_rows),
+            interim_index=interim_count,
+            dropped_arm_ids=dropped_arm_ids,
+            arm_counts=arm_counts,
+        )
+    )
 
     achieved_target = bool(
         (stop_reason == "success")
-        or (
-            np.isfinite(effect)
-            and np.isfinite(p_value)
-            and p_value <= 0.05
-            and effect >= float(config.endpoint.target_difference)
+        or _meets_endpoint_target(
+            endpoint=config.endpoint,
+            effect=best_result.effect,
+            effect_raw=best_result.effect_raw,
+            p_value=best_result.p_value,
         )
     )
 
     return ReplicateResult(
         replicate_id=replicate_id,
-        treatment_effect=float(effect),
-        p_value=float(p_value),
+        treatment_effect=float(best_result.effect),
+        p_value=float(best_result.p_value),
         achieved_target=achieved_target,
         responders_treatment=responders_t,
         responders_control=responders_c,
@@ -298,9 +413,16 @@ def _simulate_one_replicate(
         enrolled_n=int(len(enrolled_rows)),
         stop_reason=stop_reason,
         stop_interim_index=stop_interim_index,
-        effective_external_weight=float(effective_weight),
+        effective_external_weight=float(best_result.effective_external_weight),
         decision_cards=decision_cards,
         allocation_trace=allocation_trace,
+        event_rate=event_rate,
+        active_arm_ids=final_active_arm_ids,
+        dropped_arm_ids=sorted(dropped_arm_ids),
+        arm_enrollment_counts={key: int(value) for key, value in arm_counts.items()},
+        analysis_method=best_result.method,
+        effect_measure=best_result.effect_measure,
+        effect_raw=best_result.effect_raw,
     )
 
 
@@ -330,9 +452,32 @@ def _simulate_potential_outcomes(
             drift_block=drift,
             rng=rng,
         )
-        out["change"] = out["change"] + site_country_shift
-        out["endpoint_value"] = out["endpoint_value"] + site_country_shift
-        out["responder"] = out["endpoint_value"] >= config.endpoint.target_difference
+        if config.endpoint.kind == "longitudinal":
+            adjusted_visits: list[list[dict[str, float]]] = []
+            for idx, visits in enumerate(out["visit_values"].to_list()):
+                patient_visits: list[dict[str, float]] = []
+                if isinstance(visits, (list, np.ndarray)):
+                    for visit in visits:
+                        if not isinstance(visit, dict):
+                            continue
+                        patient_visits.append(
+                            {
+                                "day": float(visit.get("day", 0.0)),
+                                "change": float(visit.get("change", 0.0))
+                                + float(site_country_shift[idx]),
+                            }
+                        )
+                adjusted_visits.append(patient_visits)
+            out["visit_values"] = adjusted_visits
+            out["change"] = out["change"] + site_country_shift
+            out["endpoint_value"] = out["endpoint_value"] + site_country_shift
+        elif config.endpoint.kind != "time_to_event":
+            out["change"] = out["change"] + site_country_shift
+            out["endpoint_value"] = out["endpoint_value"] + site_country_shift
+        if config.endpoint.kind == "time_to_event":
+            out["responder"] = ~out["event_observed"].astype(bool)
+        else:
+            out["responder"] = out["endpoint_value"] >= config.endpoint.target_difference
         outcomes[arm.arm_id] = out
 
     return outcomes
@@ -405,15 +550,32 @@ def _adaptive_allocation(
     config: SimulationConfig,
     analysis: pd.DataFrame,
     rng: np.random.Generator,
+    *,
+    active_arm_ids: list[str] | None = None,
 ) -> tuple[dict[str, float], dict[str, float]]:
     control_id = _control_arm(config.arms).arm_id
-    treatment_ids = [arm.arm_id for arm in config.arms if not arm.is_control]
+    if active_arm_ids is None:
+        treatment_ids = [arm.arm_id for arm in config.arms if not arm.is_control]
+    else:
+        treatment_ids = [
+            arm.arm_id
+            for arm in config.arms
+            if not arm.is_control and arm.arm_id in set(active_arm_ids)
+        ]
 
     if analysis.empty or any(
         len(analysis[analysis["arm_id"] == t]) < 4 for t in treatment_ids
     ):
-        default = _initial_allocation(config.arms)
-        return default, {arm.arm_id: 1.0 / len(config.arms) for arm in config.arms}
+        active_arms = (
+            [arm for arm in config.arms if arm.arm_id in set(active_arm_ids)]
+            if active_arm_ids is not None
+            else config.arms
+        )
+        default = _initial_allocation(active_arms)
+        return default, {arm.arm_id: 1.0 / len(active_arms) for arm in active_arms}
+
+    if not treatment_ids:
+        return {control_id: 1.0}, {control_id: 1.0}
 
     posterior = _posterior_best_probabilities(
         analysis,
@@ -425,7 +587,8 @@ def _adaptive_allocation(
     )
 
     min_alloc = float(np.clip(config.adaptive.min_allocation, 0.0, 0.45))
-    control_share = max(min_alloc, 1.0 / len(config.arms))
+    active_arm_count = max(len(treatment_ids) + 1, 1)
+    control_share = max(min_alloc, 1.0 / active_arm_count)
 
     tx_probs = np.array(
         [posterior.get(arm_id, 0.0) for arm_id in treatment_ids], dtype=float
@@ -491,6 +654,123 @@ def _posterior_best_probabilities(
     return probabilities
 
 
+def _normalize_allocation_for_active_arms(
+    allocation: dict[str, float],
+    arms: list[ArmSpec],
+    *,
+    arm_counts: dict[str, int] | None = None,
+) -> dict[str, float]:
+    if not arms:
+        return {}
+    active_ids = [arm.arm_id for arm in arms]
+    baseline_share = 1.0 / len(active_ids)
+    clipped = {
+        arm_id: max(float(allocation.get(arm_id, baseline_share)), 0.0)
+        for arm_id in active_ids
+    }
+    if arm_counts is not None:
+        for arm in arms:
+            if not arm.backfill_enabled:
+                continue
+            target_n = (
+                int(arm.backfill_target_n)
+                if arm.backfill_target_n is not None
+                else max(
+                    [arm_counts.get(other.arm_id, 0) for other in arms if not other.is_control]
+                    or [0]
+                )
+            )
+            current_n = int(arm_counts.get(arm.arm_id, 0))
+            if current_n < target_n:
+                clipped[arm.arm_id] = clipped.get(arm.arm_id, 0.0) * max(
+                    float(arm.backfill_allocation_multiplier),
+                    1.0,
+                )
+    total = sum(clipped.values())
+    if total <= 1e-9:
+        return _initial_allocation(arms)
+    return {arm_id: value / total for arm_id, value in clipped.items()}
+
+
+def _active_arm_ids(
+    arms: list[ArmSpec],
+    *,
+    enrolled_n: int,
+    interim_index: int,
+    dropped_arm_ids: set[str],
+    arm_counts: dict[str, int],
+) -> list[str]:
+    active: list[str] = []
+    for arm in arms:
+        if enrolled_n < max(int(arm.opens_at_enrollment), 0):
+            continue
+        if arm.opens_at_interim is not None and interim_index < int(arm.opens_at_interim):
+            continue
+        if (
+            arm.opens_after_arm_drop is not None
+            and str(arm.opens_after_arm_drop) not in dropped_arm_ids
+        ):
+            continue
+        if arm.closes_at_interim is not None and interim_index >= int(arm.closes_at_interim):
+            continue
+        if arm.arm_id in dropped_arm_ids:
+            continue
+        if arm.max_patients is not None and arm_counts.get(arm.arm_id, 0) >= int(arm.max_patients):
+            continue
+        active.append(arm.arm_id)
+    return active
+
+
+def _dropped_treatment_arms(
+    config: SimulationConfig,
+    *,
+    posterior: dict[str, float],
+    arm_counts: dict[str, int],
+    active_arm_ids: list[str],
+) -> set[str]:
+    if not config.adaptive.allow_arm_dropping:
+        return set()
+    control_id = _control_arm(config.arms).arm_id
+    active_set = set(active_arm_ids)
+    dropped: set[str] = set()
+    for arm in config.arms:
+        if arm.is_control or arm.arm_id == control_id or arm.arm_id not in active_set:
+            continue
+        if arm_counts.get(arm.arm_id, 0) < 4:
+            continue
+        if float(posterior.get(arm.arm_id, 0.0)) <= float(config.adaptive.arm_drop_threshold):
+            dropped.add(arm.arm_id)
+    return dropped
+
+
+def _rescue_probability(config: SimulationConfig, arm_outcome: pd.Series) -> float:
+    if config.endpoint.kind == "time_to_event":
+        trigger = float(bool(arm_outcome.get("event_observed", False)))
+    else:
+        trigger = float(arm_outcome["change"] < config.endpoint.target_difference)
+    return float(
+        np.clip(
+            0.04 + 0.18 * trigger + 0.16 * float(arm_outcome["safety_event"]),
+            0.0,
+            0.90,
+        )
+    )
+
+
+def _meets_endpoint_target(
+    *,
+    endpoint: Any,
+    effect: float,
+    effect_raw: float,
+    p_value: float,
+) -> bool:
+    if not np.isfinite(effect) or not np.isfinite(p_value) or p_value > 0.05:
+        return False
+    if endpoint.kind == "time_to_event":
+        return np.isfinite(effect_raw) and effect_raw <= float(endpoint.target_hazard_ratio)
+    return effect >= float(endpoint.target_difference)
+
+
 def _control_arm(arms: list[ArmSpec]) -> ArmSpec:
     for arm in arms:
         if arm.is_control:
@@ -498,12 +778,10 @@ def _control_arm(arms: list[ArmSpec]) -> ArmSpec:
     raise ValueError("No control arm configured")
 
 
-def _best_treatment_arm(analysis: pd.DataFrame, control_id: str) -> str:
-    tx = analysis[analysis["arm_id"] != control_id]
-    grouped = tx.groupby("arm_id")["analysis_value"].mean()
-    if grouped.empty:
-        return control_id
-    return str(grouped.sort_values(ascending=False).index[0])
+def _coerce_numpy_scalar(value: Any) -> Any:
+    if isinstance(value, (np.generic,)):
+        return value.item()
+    return value
 
 
 def _build_run_id(trial_id: str) -> str:

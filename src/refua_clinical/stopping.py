@@ -8,8 +8,11 @@ import numpy as np
 import pandas as pd
 from scipy.stats import norm  # type: ignore[import-untyped]
 
-from .models import ExternalControlSpec, StoppingSpec
-from .pkpd import two_arm_test
+from .analysis import (
+    posterior_probability_superior,
+    select_best_treatment_result,
+)
+from .models import ArmSpec, EndpointSpec, ExternalControlSpec, StoppingSpec
 
 
 def alpha_spent(*, information_fraction: float, alpha: float, method: str) -> float:
@@ -31,6 +34,7 @@ def alpha_spent(*, information_fraction: float, alpha: float, method: str) -> fl
 def evaluate_interim_decision(
     analysis_frame: pd.DataFrame,
     *,
+    endpoint: EndpointSpec | None = None,
     control_arm_id: str,
     treatment_ids: list[str],
     enrolled_n: int,
@@ -39,6 +43,8 @@ def evaluate_interim_decision(
     stopping: StoppingSpec,
     external_control: ExternalControlSpec,
     rng: np.random.Generator,
+    arm_lookup: dict[str, ArmSpec] | None = None,
+    arm_activation_enrollment: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     info_fraction = float(np.clip(enrolled_n / max(total_n, 1), 0.0, 1.0))
     spent_alpha = alpha_spent(
@@ -58,29 +64,19 @@ def evaluate_interim_decision(
             "reason": None,
         }
 
-    best = _best_arm_by_mean(analysis_frame, treatment_ids=treatment_ids)
-    treatment_values = analysis_frame.loc[
-        analysis_frame["arm_id"] == best, "analysis_value"
-    ].to_numpy(dtype=float)
-    control_values = analysis_frame.loc[
-        analysis_frame["arm_id"] == control_arm_id, "analysis_value"
-    ].to_numpy(dtype=float)
-
-    effect, p_value, effective_weight = two_arm_test(
-        treatment=treatment_values,
-        control=control_values,
-        external_control_n=external_control.n if external_control.enabled else 0,
-        external_control_mean=external_control.mean,
-        external_control_std=external_control.std,
-        external_control_weight=external_control.weight,
-        dynamic_borrowing=external_control.dynamic_borrowing,
-        commensurability_scale=external_control.commensurability_scale,
-        robust_mixture=external_control.robust_mixture,
+    endpoint_spec = endpoint or EndpointSpec()
+    result = select_best_treatment_result(
+        analysis_frame,
+        endpoint=endpoint_spec,
+        control_arm_id=control_arm_id,
+        treatment_ids=treatment_ids,
+        external_control=external_control,
+        arm_lookup=arm_lookup,
+        arm_activation_enrollment=arm_activation_enrollment,
     )
 
-    posterior_prob = _posterior_probability_superior(
-        treatment_values=treatment_values,
-        control_values=control_values,
+    posterior_prob = posterior_probability_superior(
+        result,
         samples=1800,
         rng=rng,
     )
@@ -91,8 +87,8 @@ def evaluate_interim_decision(
     meets_success = (
         enrolled_n >= stopping.min_interim_n
         and posterior_prob >= stopping.success_posterior_threshold
-        and np.isfinite(p_value)
-        and p_value <= spent_alpha
+        and np.isfinite(result.p_value)
+        and result.p_value <= spent_alpha
     )
     meets_futility = (
         enrolled_n >= stopping.min_interim_n
@@ -116,51 +112,17 @@ def evaluate_interim_decision(
         "enrolled_n": enrolled_n,
         "information_fraction": info_fraction,
         "spent_alpha": spent_alpha,
-        "p_value": float(p_value),
-        "effect": float(effect),
-        "best_arm": best,
+        "p_value": float(result.p_value),
+        "effect": float(result.effect),
+        "effect_raw": float(result.effect_raw),
+        "effect_measure": result.effect_measure,
+        "analysis_method": result.method,
+        "best_arm": result.treatment_id,
         "posterior_superiority": posterior_prob,
         "predictive_success": predictive_prob,
         "recommendation": recommendation,
         "stop": stop,
         "reason": reason,
-        "effective_external_weight": float(effective_weight),
+        "effective_external_weight": float(result.effective_external_weight),
+        "concurrent_control_only": bool(result.concurrent_control_only),
     }
-
-
-def _best_arm_by_mean(analysis_frame: pd.DataFrame, *, treatment_ids: list[str]) -> str:
-    best_id = treatment_ids[0]
-    best_mean = -np.inf
-    for arm_id in treatment_ids:
-        values = analysis_frame.loc[
-            analysis_frame["arm_id"] == arm_id, "analysis_value"
-        ]
-        if values.empty:
-            continue
-        mean_value = float(values.mean())
-        if mean_value > best_mean:
-            best_mean = mean_value
-            best_id = arm_id
-    return best_id
-
-
-def _posterior_probability_superior(
-    *,
-    treatment_values: np.ndarray,
-    control_values: np.ndarray,
-    samples: int,
-    rng: np.random.Generator,
-) -> float:
-    if treatment_values.size < 2 or control_values.size < 2:
-        return 0.5
-
-    tx_mean = float(np.mean(treatment_values))
-    tx_se = float(
-        np.std(treatment_values, ddof=1) / np.sqrt(max(treatment_values.size, 1))
-    )
-    ct_mean = float(np.mean(control_values))
-    ct_se = float(np.std(control_values, ddof=1) / np.sqrt(max(control_values.size, 1)))
-
-    tx_draw = rng.normal(tx_mean, max(tx_se, 1e-3), size=samples)
-    ct_draw = rng.normal(ct_mean, max(ct_se, 1e-3), size=samples)
-    return float(np.mean(tx_draw - ct_draw > 0.0))
