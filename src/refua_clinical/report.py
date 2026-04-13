@@ -18,7 +18,11 @@ def render_workup_html(
     transportability_payload: dict[str, Any] | None = None,
 ) -> str:
     summary = _mapping(run_payload.get("summary"))
-    protocol = _mapping(protocol_payload.get("protocol")) if isinstance(protocol_payload, dict) else {}
+    protocol = (
+        _mapping(protocol_payload.get("protocol"))
+        if isinstance(protocol_payload, dict)
+        else {}
+    )
     optimization = _mapping(optimization_payload) if isinstance(optimization_payload, dict) else {}
     voi = _mapping(voi_payload) if isinstance(voi_payload, dict) else {}
     advice = _mapping(advice_payload) if isinstance(advice_payload, dict) else {}
@@ -41,12 +45,14 @@ def render_workup_html(
           <div>
             <p class="eyebrow">refua-clinical</p>
             <h1>Clinical Design Report</h1>
-            <p class="lede">Simulation, design optimization, information value, and advice in one artifact.</p>
+            <p class="lede">
+              Simulation, design optimization, information value, and advice in one artifact.
+            </p>
           </div>
-          <div class="cards">%s</div>
+          <div class="cards">{cards}</div>
         </section>
         """
-        % "".join(cards),
+        .format(cards="".join(cards)),
         _json_section("Run Summary", summary),
     ]
 
@@ -192,14 +198,7 @@ def _protocol_section(protocol: dict[str, Any]) -> str:
     design = _mapping(protocol.get("design"))
     endpoint = _mapping(protocol.get("endpoint"))
     stats = _mapping(protocol.get("statistical_analysis"))
-    return """
-    <section>
-      <h2>Protocol</h2>
-      <dl class="meta">
-        %s
-      </dl>
-    </section>
-    """ % "".join(
+    items = "".join(
         [
             _meta_item("Trial", protocol.get("trial_id")),
             _meta_item("Endpoint", endpoint.get("kind")),
@@ -209,6 +208,14 @@ def _protocol_section(protocol: dict[str, Any]) -> str:
             _meta_item("Success Threshold", stats.get("success_posterior_threshold")),
         ]
     )
+    return f"""
+    <section>
+      <h2>Protocol</h2>
+      <dl class="meta">
+        {items}
+      </dl>
+    </section>
+    """
 
 
 def _advice_section(advice: dict[str, Any]) -> str:
@@ -220,32 +227,35 @@ def _advice_section(advice: dict[str, Any]) -> str:
                 action = escape(str(item.get("action") or "Unnamed recommendation"))
                 rationale = escape(str(item.get("rationale") or ""))
                 items.append(f"<li><strong>{action}</strong><br>{rationale}</li>")
-    return """
+    rendered_items = "".join(items or ["<li>No recommendations were generated.</li>"])
+    return f"""
     <section>
       <h2>Recommendations</h2>
-      <ul class="recs">%s</ul>
+      <ul class="recs">{rendered_items}</ul>
     </section>
-    """ % "".join(items or ["<li>No recommendations were generated.</li>"])
+    """
 
 
 def _json_section(title: str, payload: Any) -> str:
-    return """
+    title_html = escape(title)
+    payload_html = escape(json.dumps(payload, indent=2, sort_keys=True, default=str))
+    return f"""
     <section>
-      <h2>%s</h2>
-      <pre>%s</pre>
+      <h2>{title_html}</h2>
+      <pre>{payload_html}</pre>
     </section>
-    """ % (
-        escape(title),
-        escape(json.dumps(payload, indent=2, sort_keys=True, default=str)),
-    )
+    """
 
 
 def _card(label: str, value: str) -> str:
-    return f'<article class="card"><span>{escape(label)}</span><strong>{escape(value)}</strong></article>'
+    return (
+        f'<article class="card"><span>{escape(label)}</span>'
+        f"<strong>{escape(value)}</strong></article>"
+    )
 
 
 def _meta_item(label: str, value: Any) -> str:
-    return "<div><dt>%s</dt><dd>%s</dd></div>" % (escape(label), escape(str(value)))
+    return f"<div><dt>{escape(label)}</dt><dd>{escape(str(value))}</dd></div>"
 
 
 def _float_text(value: Any, *, digits: int = 3) -> str:

@@ -5,6 +5,7 @@ Legacy function-based top-level exports were removed.
 """
 
 import tomllib
+from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _distribution_version
 from pathlib import Path
 
@@ -60,10 +61,13 @@ def _read_version_from_pyproject() -> str | None:
 
 
 def _resolve_version() -> str:
-    local_version = _read_version_from_pyproject()
-    if local_version is not None:
-        return local_version
-    return _distribution_version("refua-clinical")
+    try:
+        return _distribution_version("refua-clinical")
+    except PackageNotFoundError:
+        local_version = _read_version_from_pyproject()
+        if local_version is not None:
+            return local_version
+        raise
 
 
 __version__ = _resolve_version()

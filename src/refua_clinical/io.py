@@ -158,8 +158,9 @@ def config_from_mapping(data: dict[str, Any]) -> SimulationConfig:
             )
         )
 
-    if not any(arm.is_control for arm in arms):
-        raise ValueError("At least one arm must set is_control=true")
+    control_arm_count = sum(1 for arm in arms if arm.is_control)
+    if control_arm_count != 1:
+        raise ValueError("Exactly one arm must set is_control=true")
 
     pk_raw = _mapping(data.get("pk_model"))
     pd_raw = _mapping(data.get("pd_model"))

@@ -1,5 +1,7 @@
+import pytest
+
 from refua_clinical.models import ArmSpec, default_simulation_config
-from refua_clinical.trial import simulate_trials
+from refua_clinical.trial import _build_run_id, simulate_trials
 
 
 def test_simulate_trials_returns_summary_and_replicates() -> None:
@@ -73,3 +75,15 @@ def test_simulate_trials_supports_live_arm_addition_and_backfill() -> None:
         for rep in result.replicates
         for card in rep.decision_cards
     )
+
+
+def test_simulate_trials_rejects_multiple_controls() -> None:
+    config = default_simulation_config()
+    config.arms[1].is_control = True
+
+    with pytest.raises(ValueError, match="Exactly one control arm must be configured"):
+        simulate_trials(config)
+
+
+def test_build_run_id_is_unique_per_call() -> None:
+    assert _build_run_id("study") != _build_run_id("study")

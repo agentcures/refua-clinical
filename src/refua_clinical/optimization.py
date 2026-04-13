@@ -220,7 +220,8 @@ def optimization_to_markdown(payload: dict[str, Any]) -> str:
     for idx, candidate in enumerate(payload.get("pareto_front", []), start=1):
         lines.append(
             f"{idx}. N={candidate['total_n']}, interim={candidate['interim_every']}, "
-            f"burn_in={candidate['burn_in_n']}, min_alloc={float(candidate['min_allocation']):.2f}, "
+            f"burn_in={candidate['burn_in_n']}, "
+            f"min_alloc={float(candidate['min_allocation']):.2f}, "
             f"power={float(candidate['power']):.3f}, "
             f"safety={float(candidate['safety_event_rate']):.3f}, "
             f"cost={float(candidate['expected_cost']):,.0f}"

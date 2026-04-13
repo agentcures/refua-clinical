@@ -34,3 +34,11 @@ def test_config_from_mapping_rejects_invalid_pk_route() -> None:
 
     with pytest.raises(ValueError, match="pk_model.route"):
         config_from_mapping(payload)
+
+
+def test_config_from_mapping_rejects_multiple_control_arms() -> None:
+    payload = config_to_mapping(default_simulation_config())
+    payload["arms"][1]["is_control"] = True
+
+    with pytest.raises(ValueError, match="Exactly one arm must set is_control=true"):
+        config_from_mapping(payload)

@@ -39,7 +39,6 @@ from .modality import apply_modality_preset, list_modality_presets
 from .models import default_simulation_config
 from .optimization import optimization_to_markdown, optimize_design_space
 from .protocol import recommend_protocol, render_protocol_markdown
-from .report import render_workup_html, write_workup_html
 from .refua_bridge import (
     RefuaIntegrationPolicy,
     apply_refua_adjustments,
@@ -47,6 +46,7 @@ from .refua_bridge import (
     load_refua_payload,
     summarize_refua_payload,
 )
+from .report import render_workup_html, write_workup_html
 from .research import list_references
 from .transportability import (
     assess_transportability,

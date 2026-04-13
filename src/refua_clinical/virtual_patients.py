@@ -65,7 +65,7 @@ def infer_population_spec_from_dataframe(
         )
 
     covariates: list[CovariateSpec] = []
-    encoded_columns: dict[str, pd.Series] = {}
+    encoded_columns: dict[str, pd.Series[Any]] = {}
     for column in columns:
         series = frame[column]
         if pd.api.types.is_numeric_dtype(series):
@@ -112,11 +112,11 @@ def infer_population_spec_from_dataframe(
                 )
             encoded_columns[column] = series.fillna(mean).astype(float)
         else:
-            values = series.dropna().astype(str).str.strip()
-            values = values[values != ""]
-            if values.empty:
+            string_values = series.dropna().astype(str).str.strip()
+            string_values = string_values[string_values != ""]
+            if string_values.empty:
                 raise ValueError(f"Column '{column}' has no usable categorical values")
-            distribution = values.value_counts(normalize=True)
+            distribution = string_values.value_counts(normalize=True)
             covariates.append(
                 CovariateSpec(
                     name=column,
@@ -137,12 +137,18 @@ def infer_population_spec_from_dataframe(
                 CovariateSpec(
                     name=indicator_name,
                     distribution="categorical",
-                    params={"categories": [0, 1], "probs": [1.0 - missing_rate, missing_rate]},
+                    params={
+                        "categories": [0, 1],
+                        "probs": [1.0 - missing_rate, missing_rate],
+                    },
                 )
             )
             encoded_columns[indicator_name] = series.isna().astype(float)
 
-    encoded_frame = pd.DataFrame({name: encoded_columns[name] for name in [cov.name for cov in covariates]})
+    encoded_names = [cov.name for cov in covariates]
+    encoded_frame = pd.DataFrame(
+        {name: encoded_columns[name] for name in encoded_names}
+    )
     correlation = encoded_frame.corr(numeric_only=True).to_numpy(dtype=float)
     return VirtualPopulationSpec(
         size=size, covariates=covariates, correlation=correlation.tolist()

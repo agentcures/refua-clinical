@@ -25,12 +25,12 @@ from .modality import apply_modality_preset
 from .models import ProtocolRecommendation, SimulationConfig, default_simulation_config
 from .optimization import optimization_to_markdown, optimize_design_space
 from .protocol import recommend_protocol, render_protocol_markdown
-from .report import render_workup_html, write_workup_html
 from .refua_bridge import (
     RefuaIntegrationPolicy,
     apply_refua_adjustments,
     load_refua_payload,
 )
+from .report import render_workup_html, write_workup_html
 from .transportability import assess_transportability
 from .trial import TrialSimulationResult, simulate_trials, trial_result_to_mapping
 from .voi import estimate_value_of_information, voi_to_markdown

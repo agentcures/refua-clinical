@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 import numpy as np
 import pandas as pd
@@ -325,11 +325,11 @@ def simulate_pd_outcomes(
         dropout_day[dropped_out] = float(visit_days[0])
 
     event_observed = np.zeros(n, dtype=bool)
-    visit_values: np.ndarray
+    visit_values: pd.Series[Any]
     if endpoint.kind == "binary":
         responders = change >= endpoint.responder_threshold
         endpoint_value = responders.astype(float)
-        visit_values = np.full(n, None, dtype=object)
+        visit_values = pd.Series(np.full(n, None, dtype=object), dtype=object)
     elif endpoint.kind == "time_to_event":
         base_hazard = 1.0 / max(float(endpoint.event_horizon_day) * 0.75, 1.0)
         age = _series(covariates, "age", 60.0)
@@ -350,10 +350,12 @@ def simulate_pd_outcomes(
         responders = ~event_observed
         change = endpoint_value
         final_score = endpoint_value
-        visit_values = np.full(n, None, dtype=object)
+        visit_values = pd.Series(np.full(n, None, dtype=object), dtype=object)
     elif endpoint.kind == "longitudinal":
         profiles: list[list[dict[str, float]]] = []
-        response_curve = 1.0 - np.exp(-3.0 * (np.asarray(visit_days, dtype=float) / float(last_visit_day)))
+        response_curve = 1.0 - np.exp(
+            -3.0 * (np.asarray(visit_days, dtype=float) / float(last_visit_day))
+        )
         for idx in range(n):
             patient_profile: list[dict[str, float]] = []
             for day, curve_value in zip(visit_days, response_curve, strict=True):
@@ -362,11 +364,11 @@ def simulate_pd_outcomes(
                     + float(treatment_effect[idx]) * float(curve_value)
                     + float(effect_modifier[idx]) * np.sqrt(float(day) / float(last_visit_day))
                     - float(drift_penalty[idx]) * float(day) / float(last_visit_day)
-                        + float(rng.normal(0.0, pd_model.residual_sd * 0.5))
+                    + float(rng.normal(0.0, pd_model.residual_sd * 0.5))
                 )
                 patient_profile.append({"day": float(day), "change": float(day_change)})
             profiles.append(patient_profile)
-        visit_values = profiles
+        visit_values = pd.Series(profiles, dtype=object)
         endpoint_value = np.array(
             [float(profile[-1]["change"]) for profile in profiles],
             dtype=float,
@@ -377,7 +379,7 @@ def simulate_pd_outcomes(
     else:
         responders = change >= endpoint.target_difference
         endpoint_value = change
-        visit_values = np.full(n, None, dtype=object)
+        visit_values = pd.Series(np.full(n, None, dtype=object), dtype=object)
 
     return pd.DataFrame(
         {

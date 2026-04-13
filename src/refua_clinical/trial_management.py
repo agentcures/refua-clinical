@@ -1334,7 +1334,10 @@ class ClinicalTrialManager:
                 created = True
             else:
                 existing_meta = _extract_nested_mapping(existing.get("metadata"))
-                payload["metadata"] = merge_mappings(existing_meta, payload["metadata"])
+                payload["metadata"] = merge_mappings(
+                    existing_meta,
+                    _extract_nested_mapping(payload.get("metadata")),
+                )
                 if "created_at" in existing:
                     payload["created_at"] = existing.get("created_at")
                 if "activated_at" not in payload and existing.get("activated_at"):
@@ -1497,12 +1500,12 @@ class ClinicalTrialManager:
                             {"text": text, "completed": False, "owner": None}
                         )
                 elif isinstance(item, dict):
-                    text = _safe_text(item.get("text"))
-                    if text is None:
+                    item_text = _safe_text(item.get("text"))
+                    if item_text is None:
                         continue
                     normalized_actions.append(
                         {
-                            "text": text,
+                            "text": item_text,
                             "completed": bool(item.get("completed", False)),
                             "owner": _safe_text(item.get("owner")),
                         }
@@ -1906,7 +1909,10 @@ class ClinicalTrialManager:
                 created = True
             else:
                 existing_meta = _extract_nested_mapping(existing.get("metadata"))
-                payload["metadata"] = merge_mappings(existing_meta, payload["metadata"])
+                payload["metadata"] = merge_mappings(
+                    existing_meta,
+                    _extract_nested_mapping(payload.get("metadata")),
+                )
                 if existing.get("created_at"):
                     payload["created_at"] = existing.get("created_at")
                 if payload.get("target_date") is None and existing.get("target_date"):

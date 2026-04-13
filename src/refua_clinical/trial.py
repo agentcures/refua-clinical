@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 import numpy as np
 import pandas as pd
@@ -24,6 +25,7 @@ from .virtual_patients import generate_virtual_population
 
 
 def simulate_trials(config: SimulationConfig) -> TrialSimulationResult:
+    _validate_arms(config.arms)
     virtual_population = generate_virtual_population(
         config.population, seed=config.seed
     )
@@ -178,6 +180,7 @@ def _simulate_one_replicate(
         n=total_n, replace=replace, random_state=seed
     ).reset_index(drop=True)
     sample = _assign_operational_strata(sample, config=config, rng=rng)
+    sample_rows = sample.to_dict(orient="records")
 
     patient_ids = sample["patient_id"].to_numpy(dtype=int)
     block_index = np.arange(total_n, dtype=int) // max(
@@ -227,6 +230,7 @@ def _simulate_one_replicate(
         arm_id = _sample_arm_id(active_arms, allocation, rng)
         arm_counts[arm_id] = arm_counts.get(arm_id, 0) + 1
         arm_outcome = potential_outcomes[arm_id].iloc[idx]
+        sample_row = sample_rows[idx]
 
         rescue_prob = _rescue_probability(config, arm_outcome)
         rescue_use = bool(rng.binomial(1, rescue_prob))
@@ -235,8 +239,8 @@ def _simulate_one_replicate(
             "patient_id": int(patient_ids[idx]),
             "enrolled_index": idx + 1,
             "block_index": int(block_index[idx]),
-            "site_id": str(sample.loc[idx, "site_id"]),
-            "country_id": str(sample.loc[idx, "country_id"]),
+            "site_id": str(sample_row["site_id"]),
+            "country_id": str(sample_row["country_id"]),
             "arm_id": arm_id,
             "endpoint_value": float(arm_outcome["endpoint_value"]),
             "change": float(arm_outcome["change"]),
@@ -254,7 +258,7 @@ def _simulate_one_replicate(
             "cmax": float(arm_outcome["cmax"]),
             "ctrough": float(arm_outcome["ctrough"]),
         }
-        for column, value in sample.iloc[idx].items():
+        for column, value in sample_row.items():
             if column in {
                 "patient_id",
                 "site_id",
@@ -468,7 +472,11 @@ def _simulate_potential_outcomes(
                             }
                         )
                 adjusted_visits.append(patient_visits)
-            out["visit_values"] = adjusted_visits
+            out["visit_values"] = pd.Series(
+                adjusted_visits,
+                index=out.index,
+                dtype=object,
+            )
             out["change"] = out["change"] + site_country_shift
             out["endpoint_value"] = out["endpoint_value"] + site_country_shift
         elif config.endpoint.kind != "time_to_event":
@@ -778,6 +786,12 @@ def _control_arm(arms: list[ArmSpec]) -> ArmSpec:
     raise ValueError("No control arm configured")
 
 
+def _validate_arms(arms: list[ArmSpec]) -> None:
+    control_count = sum(1 for arm in arms if arm.is_control)
+    if control_count != 1:
+        raise ValueError("Exactly one control arm must be configured")
+
+
 def _coerce_numpy_scalar(value: Any) -> Any:
     if isinstance(value, (np.generic,)):
         return value.item()
@@ -786,4 +800,4 @@ def _coerce_numpy_scalar(value: Any) -> Any:
 
 def _build_run_id(trial_id: str) -> str:
     ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    return f"{trial_id}-{ts}"
+    return f"{trial_id}-{ts}-{uuid4().hex[:8]}"

@@ -94,3 +94,7 @@ warn_unused_ignores = true
 disallow_untyped_defs = true
 check_untyped_defs = true
 strict_optional = true
+
+[[tool.mypy.overrides]]
+module = ["lifelines", "lifelines.*", "scipy.optimize"]
+ignore_missing_imports = true
