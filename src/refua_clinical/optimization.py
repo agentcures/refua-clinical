@@ -6,9 +6,9 @@ from typing import Any
 
 import numpy as np
 
-from .io import config_from_mapping, config_to_mapping
+from .io import clone_config
 from .models import SimulationConfig
-from .trial import simulate_trials
+from .trial import _population_table_for_config, _simulate_trials_with_population
 
 
 def optimize_design_space(
@@ -34,6 +34,7 @@ def optimize_design_space(
         candidate_success_thresholds = [float(config.stopping.success_posterior_threshold)]
 
     candidates: list[dict[str, Any]] = []
+    population_cache: dict[int, Any] = {}
     for total_n in sorted(set(candidate_total_n)):
         for interim_every in sorted(set(candidate_interims)):
             for burn_in_n in sorted(set(candidate_burn_in_n)):
@@ -50,7 +51,11 @@ def optimize_design_space(
                             success_threshold=float(success_threshold),
                             replicates=max(20, replicates_per_candidate),
                         )
-                        result = simulate_trials(candidate_config)
+                        population = _population_table_for_config(
+                            candidate_config,
+                            cache=population_cache,
+                        )
+                        result = _simulate_trials_with_population(candidate_config, population)
                         summary = result.summary
                         expected_n = float(summary.get("expected_sample_size", total_n))
                         interim_mean = float(summary.get("allocation_interims_mean", 0.0))
@@ -105,15 +110,15 @@ def _clone_for_candidate(
     success_threshold: float,
     replicates: int,
 ) -> SimulationConfig:
-    payload = config_to_mapping(config)
-    payload["enrollment"]["total_n"] = int(total_n)
-    payload["adaptive"]["interim_every"] = int(interim_every)
-    payload["adaptive"]["burn_in_n"] = int(burn_in_n)
-    payload["adaptive"]["min_allocation"] = float(min_allocation)
-    payload["stopping"]["success_posterior_threshold"] = float(success_threshold)
-    payload["replicates"] = int(replicates)
-    payload["seed"] = int(config.seed) + int(total_n) + int(interim_every)
-    return config_from_mapping(payload)
+    cloned = clone_config(config)
+    cloned.enrollment.total_n = int(total_n)
+    cloned.adaptive.interim_every = int(interim_every)
+    cloned.adaptive.burn_in_n = int(burn_in_n)
+    cloned.adaptive.min_allocation = float(min_allocation)
+    cloned.stopping.success_posterior_threshold = float(success_threshold)
+    cloned.replicates = int(replicates)
+    cloned.seed = int(config.seed) + int(total_n) + int(interim_every)
+    return cloned
 
 
 def _expected_cost(

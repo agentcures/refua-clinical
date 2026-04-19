@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from .io import config_from_mapping, config_to_mapping
+from .io import clone_config
 from .models import SimulationConfig
-from .trial import simulate_trials
+from .trial import _population_table_for_config, _simulate_trials_with_population
 
 
 def estimate_value_of_information(
@@ -26,6 +26,7 @@ def estimate_value_of_information(
 
     baseline_n = int(config.enrollment.total_n)
     scenarios: list[dict[str, Any]] = []
+    population_cache: dict[int, Any] = {}
 
     for extra_n in sorted(set(int(max(0, value)) for value in candidate_extra_n)):
         for success_threshold in sorted(set(candidate_success_thresholds)):
@@ -38,7 +39,11 @@ def estimate_value_of_information(
                     min_allocation=float(min_allocation),
                     replicates=max(replicates_per_scenario, 20),
                 )
-                result = simulate_trials(scenario_config)
+                population = _population_table_for_config(
+                    scenario_config,
+                    cache=population_cache,
+                )
+                result = _simulate_trials_with_population(scenario_config, population)
 
                 utility = _decision_utility(
                     power=float(result.summary["power"]),
@@ -90,13 +95,13 @@ def _clone_for_n(
     min_allocation: float,
     replicates: int,
 ) -> SimulationConfig:
-    payload = config_to_mapping(config)
-    payload["enrollment"]["total_n"] = int(total_n)
-    payload["stopping"]["success_posterior_threshold"] = float(success_threshold)
-    payload["adaptive"]["min_allocation"] = float(min_allocation)
-    payload["replicates"] = int(replicates)
-    payload["seed"] = int(config.seed) + int(total_n)
-    return config_from_mapping(payload)
+    cloned = clone_config(config)
+    cloned.enrollment.total_n = int(total_n)
+    cloned.stopping.success_posterior_threshold = float(success_threshold)
+    cloned.adaptive.min_allocation = float(min_allocation)
+    cloned.replicates = int(replicates)
+    cloned.seed = int(config.seed) + int(total_n)
+    return cloned
 
 
 def _decision_utility(

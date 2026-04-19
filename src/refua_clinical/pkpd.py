@@ -278,6 +278,7 @@ def simulate_pd_outcomes(
     pk: PKMetrics,
     drift_block: np.ndarray,
     rng: np.random.Generator,
+    operational_shift: np.ndarray | None = None,
 ) -> pd.DataFrame:
     n = len(covariates)
     if n < 1:
@@ -289,6 +290,11 @@ def simulate_pd_outcomes(
         visit_days = [int(endpoint.assessment_day)]
     last_visit_day = max(max(visit_days), int(endpoint.assessment_day), 1)
     placebo = pd_model.placebo_improvement_per_day * endpoint.assessment_day
+    shift = (
+        np.asarray(operational_shift, dtype=float)
+        if operational_shift is not None
+        else np.zeros(n, dtype=float)
+    )
 
     treatment_effect = _emax(pk.auc, pd_model.emax, pd_model.ec50_auc)
     if arm.is_control:
@@ -303,6 +309,8 @@ def simulate_pd_outcomes(
 
     change = placebo + treatment_effect + effect_modifier - drift_penalty
     change += rng.normal(0.0, pd_model.residual_sd, size=n)
+    if endpoint.kind != "time_to_event":
+        change = change + shift
 
     final_score = baseline - change
 
@@ -328,7 +336,7 @@ def simulate_pd_outcomes(
     visit_values: pd.Series[Any]
     if endpoint.kind == "binary":
         responders = change >= endpoint.responder_threshold
-        endpoint_value = responders.astype(float)
+        endpoint_value = responders.astype(float) + shift
         visit_values = pd.Series(np.full(n, None, dtype=object), dtype=object)
     elif endpoint.kind == "time_to_event":
         base_hazard = 1.0 / max(float(endpoint.event_horizon_day) * 0.75, 1.0)
@@ -352,30 +360,31 @@ def simulate_pd_outcomes(
         final_score = endpoint_value
         visit_values = pd.Series(np.full(n, None, dtype=object), dtype=object)
     elif endpoint.kind == "longitudinal":
-        profiles: list[list[dict[str, float]]] = []
-        response_curve = 1.0 - np.exp(
-            -3.0 * (np.asarray(visit_days, dtype=float) / float(last_visit_day))
+        visit_day_array = np.asarray(visit_days, dtype=float)
+        response_curve = 1.0 - np.exp(-3.0 * (visit_day_array / float(last_visit_day)))
+        visit_scale = np.sqrt(visit_day_array / float(last_visit_day))
+        drift_scale = visit_day_array / float(last_visit_day)
+        visit_noise = rng.normal(0.0, pd_model.residual_sd * 0.5, size=(n, len(visit_days)))
+        visit_change_matrix = (
+            pd_model.placebo_improvement_per_day * visit_day_array[None, :]
+            + treatment_effect[:, None] * response_curve[None, :]
+            + effect_modifier[:, None] * visit_scale[None, :]
+            - drift_penalty[:, None] * drift_scale[None, :]
+            + visit_noise
+            + shift[:, None]
         )
-        for idx in range(n):
-            patient_profile: list[dict[str, float]] = []
-            for day, curve_value in zip(visit_days, response_curve, strict=True):
-                day_change = (
-                    pd_model.placebo_improvement_per_day * float(day)
-                    + float(treatment_effect[idx]) * float(curve_value)
-                    + float(effect_modifier[idx]) * np.sqrt(float(day) / float(last_visit_day))
-                    - float(drift_penalty[idx]) * float(day) / float(last_visit_day)
-                    + float(rng.normal(0.0, pd_model.residual_sd * 0.5))
-                )
-                patient_profile.append({"day": float(day), "change": float(day_change)})
-            profiles.append(patient_profile)
-        visit_values = pd.Series(profiles, dtype=object)
-        endpoint_value = np.array(
-            [float(profile[-1]["change"]) for profile in profiles],
-            dtype=float,
-        )
+        endpoint_value = visit_change_matrix[:, -1]
         change = endpoint_value
         final_score = baseline - endpoint_value
         responders = endpoint_value >= endpoint.target_difference
+        profiles: list[list[dict[str, float]]] = []
+        for patient_changes in visit_change_matrix:
+            patient_profile = [
+                {"day": float(day), "change": float(day_change)}
+                for day, day_change in zip(visit_day_array, patient_changes, strict=True)
+            ]
+            profiles.append(patient_profile)
+        visit_values = pd.Series(profiles, dtype=object)
     else:
         responders = change >= endpoint.target_difference
         endpoint_value = change

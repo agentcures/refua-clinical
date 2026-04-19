@@ -6,10 +6,10 @@ from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any
 
-from .io import config_from_mapping
+from .io import clone_config
 from .models import CandidateProtocolScore, ProtocolRecommendation, SimulationConfig
 from .research import list_references
-from .trial import simulate_trials
+from .trial import _population_table_for_config, _simulate_trials_with_population
 
 
 def recommend_protocol(
@@ -37,6 +37,7 @@ def recommend_protocol(
         candidate_success_thresholds = [float(config.stopping.success_posterior_threshold)]
 
     candidates: list[CandidateProtocolScore] = []
+    population_cache: dict[int, Any] = {}
 
     for total_n in candidate_total_n:
         for interim_every in candidate_interims:
@@ -54,7 +55,11 @@ def recommend_protocol(
                             success_threshold=float(success_threshold),
                             replicates=max(20, replicates_per_candidate),
                         )
-                        result = simulate_trials(candidate_config)
+                        population = _population_table_for_config(
+                            candidate_config,
+                            cache=population_cache,
+                        )
+                        result = _simulate_trials_with_population(candidate_config, population)
                         power = float(result.summary["power"])
                         effect = float(result.summary["mean_effect"])
                         safety = float(result.summary["safety_event_rate"])
@@ -229,15 +234,15 @@ def _clone_with_design(
     success_threshold: float,
     replicates: int,
 ) -> SimulationConfig:
-    payload = asdict(config)
-    payload["replicates"] = int(replicates)
-    payload["enrollment"]["total_n"] = int(total_n)
-    payload["adaptive"]["interim_every"] = int(interim_every)
-    payload["adaptive"]["burn_in_n"] = int(burn_in_n)
-    payload["adaptive"]["min_allocation"] = float(min_allocation)
-    payload["stopping"]["success_posterior_threshold"] = float(success_threshold)
-    payload["seed"] = int(config.seed) + int(total_n) + int(interim_every)
-    return config_from_mapping(payload)
+    cloned = clone_config(config)
+    cloned.replicates = int(replicates)
+    cloned.enrollment.total_n = int(total_n)
+    cloned.adaptive.interim_every = int(interim_every)
+    cloned.adaptive.burn_in_n = int(burn_in_n)
+    cloned.adaptive.min_allocation = float(min_allocation)
+    cloned.stopping.success_posterior_threshold = float(success_threshold)
+    cloned.seed = int(config.seed) + int(total_n) + int(interim_every)
+    return cloned
 
 
 def _build_protocol_payload(

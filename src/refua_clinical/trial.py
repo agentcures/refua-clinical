@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
@@ -24,19 +24,58 @@ from .stopping import evaluate_interim_decision
 from .virtual_patients import generate_virtual_population
 
 
+@dataclass(slots=True)
+class _ArmOutcomeArrays:
+    endpoint_value: np.ndarray
+    change: np.ndarray
+    baseline: np.ndarray
+    final_score: np.ndarray
+    responder: np.ndarray
+    safety_event: np.ndarray
+    dropped_out: np.ndarray
+    event_observed: np.ndarray
+    visit_values: np.ndarray
+    dropout_day: np.ndarray
+    auc: np.ndarray
+    cavg: np.ndarray
+    cmax: np.ndarray
+    ctrough: np.ndarray
+
+
 def simulate_trials(config: SimulationConfig) -> TrialSimulationResult:
     _validate_arms(config.arms)
-    virtual_population = generate_virtual_population(
-        config.population, seed=config.seed
-    )
-    vp_table = virtual_population.table
+    population = _population_table_for_config(config)
+    return _simulate_trials_with_population(config, population)
 
+
+def _population_table_for_config(
+    config: SimulationConfig,
+    *,
+    cache: dict[int, pd.DataFrame] | None = None,
+) -> pd.DataFrame:
+    seed = int(config.seed)
+    if cache is not None:
+        cached = cache.get(seed)
+        if cached is not None:
+            return cached
+
+    table = generate_virtual_population(config.population, seed=seed).table
+    if cache is not None:
+        cache[seed] = table
+    return table
+
+
+def _simulate_trials_with_population(
+    config: SimulationConfig,
+    population: pd.DataFrame,
+) -> TrialSimulationResult:
+    _validate_arms(config.arms)
     replicates: list[ReplicateResult] = []
     for idx in range(config.replicates):
         replicate_seed = config.seed + idx * 17 + 11
         replicates.append(
             _simulate_one_replicate(
-                config, vp_table, replicate_id=idx + 1, seed=replicate_seed
+                config, population, replicate_id=idx + 1, seed=replicate_seed
             )
         )
 
@@ -174,15 +213,18 @@ def _simulate_one_replicate(
 ) -> ReplicateResult:
     rng = np.random.default_rng(seed)
     total_n = config.enrollment.total_n
+    sample_rng = np.random.default_rng(seed)
 
     replace = len(population) < total_n
-    sample = population.sample(
-        n=total_n, replace=replace, random_state=seed
-    ).reset_index(drop=True)
+    population_idx = np.arange(len(population), dtype=int)
+    sampled_idx = sample_rng.choice(population_idx, size=total_n, replace=replace)
+    sample = population.iloc[sampled_idx].reset_index(drop=True).copy()
     sample = _assign_operational_strata(sample, config=config, rng=rng)
-    sample_rows = sample.to_dict(orient="records")
+    sample_columns = {
+        column: sample[column].to_numpy(copy=False) for column in sample.columns
+    }
 
-    patient_ids = sample["patient_id"].to_numpy(dtype=int)
+    enrolled_index = np.arange(1, total_n + 1, dtype=int)
     block_index = np.arange(total_n, dtype=int) // max(
         config.enrollment.accrual_per_block, 1
     )
@@ -194,7 +236,6 @@ def _simulate_one_replicate(
     potential_outcomes = _simulate_potential_outcomes(config, sample, drift, rng)
 
     allocation = _initial_allocation(config.arms)
-    enrolled_rows: list[dict[str, Any]] = []
     allocation_trace: list[InterimUpdate] = []
     decision_cards: list[dict[str, Any]] = []
     arm_counts = {arm.arm_id: 0 for arm in config.arms}
@@ -205,6 +246,24 @@ def _simulate_one_replicate(
     stop_reason: str | None = None
     stop_interim_index: int | None = None
     interim_count = 0
+
+    assigned_arm_ids = np.empty(total_n, dtype=object)
+    endpoint_values = np.empty(total_n, dtype=float)
+    change_values = np.empty(total_n, dtype=float)
+    baseline_values = np.empty(total_n, dtype=float)
+    final_scores = np.empty(total_n, dtype=float)
+    responder_values = np.zeros(total_n, dtype=bool)
+    safety_events = np.zeros(total_n, dtype=bool)
+    dropped_out_values = np.zeros(total_n, dtype=bool)
+    rescue_values = np.zeros(total_n, dtype=bool)
+    event_observed_values = np.zeros(total_n, dtype=bool)
+    visit_values = np.empty(total_n, dtype=object)
+    visit_values.fill(None)
+    dropout_days = np.full(total_n, np.nan, dtype=float)
+    auc_values = np.empty(total_n, dtype=float)
+    cavg_values = np.empty(total_n, dtype=float)
+    cmax_values = np.empty(total_n, dtype=float)
+    ctrough_values = np.empty(total_n, dtype=float)
 
     for idx in range(total_n):
         active_arm_ids = _active_arm_ids(
@@ -229,44 +288,34 @@ def _simulate_one_replicate(
         )
         arm_id = _sample_arm_id(active_arms, allocation, rng)
         arm_counts[arm_id] = arm_counts.get(arm_id, 0) + 1
-        arm_outcome = potential_outcomes[arm_id].iloc[idx]
-        sample_row = sample_rows[idx]
+        arm_outcome = potential_outcomes[arm_id]
 
-        rescue_prob = _rescue_probability(config, arm_outcome)
-        rescue_use = bool(rng.binomial(1, rescue_prob))
+        current_change = float(arm_outcome.change[idx])
+        current_safety_event = bool(arm_outcome.safety_event[idx])
+        current_event_observed = bool(arm_outcome.event_observed[idx])
+        rescue_prob = _rescue_probability(
+            config,
+            change=current_change,
+            safety_event=current_safety_event,
+            event_observed=current_event_observed,
+        )
 
-        row = {
-            "patient_id": int(patient_ids[idx]),
-            "enrolled_index": idx + 1,
-            "block_index": int(block_index[idx]),
-            "site_id": str(sample_row["site_id"]),
-            "country_id": str(sample_row["country_id"]),
-            "arm_id": arm_id,
-            "endpoint_value": float(arm_outcome["endpoint_value"]),
-            "change": float(arm_outcome["change"]),
-            "baseline": float(arm_outcome["baseline"]),
-            "final_score": float(arm_outcome["final_score"]),
-            "responder": bool(arm_outcome["responder"]),
-            "safety_event": bool(arm_outcome["safety_event"]),
-            "dropped_out": bool(arm_outcome["dropped_out"]),
-            "rescue_use": rescue_use,
-            "event_observed": bool(arm_outcome.get("event_observed", False)),
-            "visit_values": arm_outcome.get("visit_values"),
-            "dropout_day": arm_outcome.get("dropout_day"),
-            "auc": float(arm_outcome["auc"]),
-            "cavg": float(arm_outcome["cavg"]),
-            "cmax": float(arm_outcome["cmax"]),
-            "ctrough": float(arm_outcome["ctrough"]),
-        }
-        for column, value in sample_row.items():
-            if column in {
-                "patient_id",
-                "site_id",
-                "country_id",
-            } or column in row:
-                continue
-            row[str(column)] = _coerce_numpy_scalar(value)
-        enrolled_rows.append(row)
+        assigned_arm_ids[idx] = arm_id
+        endpoint_values[idx] = float(arm_outcome.endpoint_value[idx])
+        change_values[idx] = current_change
+        baseline_values[idx] = float(arm_outcome.baseline[idx])
+        final_scores[idx] = float(arm_outcome.final_score[idx])
+        responder_values[idx] = bool(arm_outcome.responder[idx])
+        safety_events[idx] = current_safety_event
+        dropped_out_values[idx] = bool(arm_outcome.dropped_out[idx])
+        rescue_values[idx] = bool(rng.binomial(1, rescue_prob))
+        event_observed_values[idx] = current_event_observed
+        visit_values[idx] = arm_outcome.visit_values[idx]
+        dropout_days[idx] = float(arm_outcome.dropout_day[idx])
+        auc_values[idx] = float(arm_outcome.auc[idx])
+        cavg_values[idx] = float(arm_outcome.cavg[idx])
+        cmax_values[idx] = float(arm_outcome.cmax[idx])
+        ctrough_values[idx] = float(arm_outcome.ctrough[idx])
 
         should_adapt = (
             config.adaptive.enabled
@@ -277,7 +326,28 @@ def _simulate_one_replicate(
         )
         if should_adapt:
             interim_count += 1
-            observed_raw = pd.DataFrame(enrolled_rows)
+            observed_raw = _build_observed_frame(
+                sample_columns=sample_columns,
+                enrolled_n=idx + 1,
+                enrolled_index=enrolled_index,
+                block_index=block_index,
+                assigned_arm_ids=assigned_arm_ids,
+                endpoint_values=endpoint_values,
+                change_values=change_values,
+                baseline_values=baseline_values,
+                final_scores=final_scores,
+                responder_values=responder_values,
+                safety_events=safety_events,
+                dropped_out_values=dropped_out_values,
+                rescue_values=rescue_values,
+                event_observed_values=event_observed_values,
+                visit_values=visit_values,
+                dropout_days=dropout_days,
+                auc_values=auc_values,
+                cavg_values=cavg_values,
+                cmax_values=cmax_values,
+                ctrough_values=ctrough_values,
+            )
             analysis = apply_estimand(
                 observed_raw,
                 control_arm_id=control_arm.arm_id,
@@ -348,7 +418,29 @@ def _simulate_one_replicate(
                 stop_interim_index = int(interim_count)
                 break
 
-    enrolled = pd.DataFrame(enrolled_rows)
+    final_enrolled_n = int(sum(arm_counts.values()))
+    enrolled = _build_observed_frame(
+        sample_columns=sample_columns,
+        enrolled_n=final_enrolled_n,
+        enrolled_index=enrolled_index,
+        block_index=block_index,
+        assigned_arm_ids=assigned_arm_ids,
+        endpoint_values=endpoint_values,
+        change_values=change_values,
+        baseline_values=baseline_values,
+        final_scores=final_scores,
+        responder_values=responder_values,
+        safety_events=safety_events,
+        dropped_out_values=dropped_out_values,
+        rescue_values=rescue_values,
+        event_observed_values=event_observed_values,
+        visit_values=visit_values,
+        dropout_days=dropout_days,
+        auc_values=auc_values,
+        cavg_values=cavg_values,
+        cmax_values=cmax_values,
+        ctrough_values=ctrough_values,
+    )
     analysis_final = apply_estimand(
         enrolled,
         control_arm_id=control_arm.arm_id,
@@ -389,7 +481,7 @@ def _simulate_one_replicate(
     final_active_arm_ids = sorted(
         _active_arm_ids(
             config.arms,
-            enrolled_n=len(enrolled_rows),
+            enrolled_n=final_enrolled_n,
             interim_index=interim_count,
             dropped_arm_ids=dropped_arm_ids,
             arm_counts=arm_counts,
@@ -414,7 +506,7 @@ def _simulate_one_replicate(
         responders_treatment=responders_t,
         responders_control=responders_c,
         safety_event_rate=safety_rate,
-        enrolled_n=int(len(enrolled_rows)),
+        enrolled_n=final_enrolled_n,
         stop_reason=stop_reason,
         stop_interim_index=stop_interim_index,
         effective_external_weight=float(best_result.effective_external_weight),
@@ -430,14 +522,94 @@ def _simulate_one_replicate(
     )
 
 
+def _build_observed_frame(
+    *,
+    sample_columns: dict[str, np.ndarray],
+    enrolled_n: int,
+    enrolled_index: np.ndarray,
+    block_index: np.ndarray,
+    assigned_arm_ids: np.ndarray,
+    endpoint_values: np.ndarray,
+    change_values: np.ndarray,
+    baseline_values: np.ndarray,
+    final_scores: np.ndarray,
+    responder_values: np.ndarray,
+    safety_events: np.ndarray,
+    dropped_out_values: np.ndarray,
+    rescue_values: np.ndarray,
+    event_observed_values: np.ndarray,
+    visit_values: np.ndarray,
+    dropout_days: np.ndarray,
+    auc_values: np.ndarray,
+    cavg_values: np.ndarray,
+    cmax_values: np.ndarray,
+    ctrough_values: np.ndarray,
+) -> pd.DataFrame:
+    if enrolled_n <= 0:
+        return pd.DataFrame(
+            {
+                "patient_id": pd.Series(dtype=int),
+                "enrolled_index": pd.Series(dtype=int),
+                "block_index": pd.Series(dtype=int),
+                "site_id": pd.Series(dtype=object),
+                "country_id": pd.Series(dtype=object),
+                "arm_id": pd.Series(dtype=object),
+                "endpoint_value": pd.Series(dtype=float),
+                "change": pd.Series(dtype=float),
+                "baseline": pd.Series(dtype=float),
+                "final_score": pd.Series(dtype=float),
+                "responder": pd.Series(dtype=bool),
+                "safety_event": pd.Series(dtype=bool),
+                "dropped_out": pd.Series(dtype=bool),
+                "rescue_use": pd.Series(dtype=bool),
+                "event_observed": pd.Series(dtype=bool),
+                "visit_values": pd.Series(dtype=object),
+                "dropout_day": pd.Series(dtype=float),
+                "auc": pd.Series(dtype=float),
+                "cavg": pd.Series(dtype=float),
+                "cmax": pd.Series(dtype=float),
+                "ctrough": pd.Series(dtype=float),
+            }
+        )
+
+    data: dict[str, Any] = {
+        "patient_id": sample_columns["patient_id"][:enrolled_n],
+        "enrolled_index": enrolled_index[:enrolled_n],
+        "block_index": block_index[:enrolled_n],
+        "site_id": sample_columns["site_id"][:enrolled_n],
+        "country_id": sample_columns["country_id"][:enrolled_n],
+        "arm_id": assigned_arm_ids[:enrolled_n],
+        "endpoint_value": endpoint_values[:enrolled_n],
+        "change": change_values[:enrolled_n],
+        "baseline": baseline_values[:enrolled_n],
+        "final_score": final_scores[:enrolled_n],
+        "responder": responder_values[:enrolled_n],
+        "safety_event": safety_events[:enrolled_n],
+        "dropped_out": dropped_out_values[:enrolled_n],
+        "rescue_use": rescue_values[:enrolled_n],
+        "event_observed": event_observed_values[:enrolled_n],
+        "visit_values": visit_values[:enrolled_n],
+        "dropout_day": dropout_days[:enrolled_n],
+        "auc": auc_values[:enrolled_n],
+        "cavg": cavg_values[:enrolled_n],
+        "cmax": cmax_values[:enrolled_n],
+        "ctrough": ctrough_values[:enrolled_n],
+    }
+    for column, values in sample_columns.items():
+        if column in {"patient_id", "site_id", "country_id"} or column in data:
+            continue
+        data[column] = values[:enrolled_n]
+    return pd.DataFrame(data)
+
+
 def _simulate_potential_outcomes(
     config: SimulationConfig,
     sample: pd.DataFrame,
     drift: np.ndarray,
     rng: np.random.Generator,
-) -> dict[str, pd.DataFrame]:
+) -> dict[str, _ArmOutcomeArrays]:
     site_country_shift = _operational_shift(sample, config=config, rng=rng)
-    outcomes: dict[str, pd.DataFrame] = {}
+    outcomes: dict[str, _ArmOutcomeArrays] = {}
 
     for arm in config.arms:
         pk = simulate_pk_metrics(
@@ -455,38 +627,28 @@ def _simulate_potential_outcomes(
             pk=pk,
             drift_block=drift,
             rng=rng,
+            operational_shift=site_country_shift,
         )
-        if config.endpoint.kind == "longitudinal":
-            adjusted_visits: list[list[dict[str, float]]] = []
-            for idx, visits in enumerate(out["visit_values"].to_list()):
-                patient_visits: list[dict[str, float]] = []
-                if isinstance(visits, (list, np.ndarray)):
-                    for visit in visits:
-                        if not isinstance(visit, dict):
-                            continue
-                        patient_visits.append(
-                            {
-                                "day": float(visit.get("day", 0.0)),
-                                "change": float(visit.get("change", 0.0))
-                                + float(site_country_shift[idx]),
-                            }
-                        )
-                adjusted_visits.append(patient_visits)
-            out["visit_values"] = pd.Series(
-                adjusted_visits,
-                index=out.index,
-                dtype=object,
-            )
-            out["change"] = out["change"] + site_country_shift
-            out["endpoint_value"] = out["endpoint_value"] + site_country_shift
-        elif config.endpoint.kind != "time_to_event":
-            out["change"] = out["change"] + site_country_shift
-            out["endpoint_value"] = out["endpoint_value"] + site_country_shift
         if config.endpoint.kind == "time_to_event":
             out["responder"] = ~out["event_observed"].astype(bool)
         else:
             out["responder"] = out["endpoint_value"] >= config.endpoint.target_difference
-        outcomes[arm.arm_id] = out
+        outcomes[arm.arm_id] = _ArmOutcomeArrays(
+            endpoint_value=out["endpoint_value"].to_numpy(dtype=float, copy=False),
+            change=out["change"].to_numpy(dtype=float, copy=False),
+            baseline=out["baseline"].to_numpy(dtype=float, copy=False),
+            final_score=out["final_score"].to_numpy(dtype=float, copy=False),
+            responder=out["responder"].to_numpy(dtype=bool, copy=False),
+            safety_event=out["safety_event"].to_numpy(dtype=bool, copy=False),
+            dropped_out=out["dropped_out"].to_numpy(dtype=bool, copy=False),
+            event_observed=out["event_observed"].to_numpy(dtype=bool, copy=False),
+            visit_values=out["visit_values"].to_numpy(dtype=object, copy=False),
+            dropout_day=out["dropout_day"].to_numpy(dtype=float, copy=False),
+            auc=out["auc"].to_numpy(dtype=float, copy=False),
+            cavg=out["cavg"].to_numpy(dtype=float, copy=False),
+            cmax=out["cmax"].to_numpy(dtype=float, copy=False),
+            ctrough=out["ctrough"].to_numpy(dtype=float, copy=False),
+        )
 
     return outcomes
 
@@ -751,14 +913,20 @@ def _dropped_treatment_arms(
     return dropped
 
 
-def _rescue_probability(config: SimulationConfig, arm_outcome: pd.Series) -> float:
+def _rescue_probability(
+    config: SimulationConfig,
+    *,
+    change: float,
+    safety_event: bool,
+    event_observed: bool,
+) -> float:
     if config.endpoint.kind == "time_to_event":
-        trigger = float(bool(arm_outcome.get("event_observed", False)))
+        trigger = float(event_observed)
     else:
-        trigger = float(arm_outcome["change"] < config.endpoint.target_difference)
+        trigger = float(change < config.endpoint.target_difference)
     return float(
         np.clip(
-            0.04 + 0.18 * trigger + 0.16 * float(arm_outcome["safety_event"]),
+            0.04 + 0.18 * trigger + 0.16 * float(safety_event),
             0.0,
             0.90,
         )

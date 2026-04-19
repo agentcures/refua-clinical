@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 from dataclasses import asdict, fields
 from pathlib import Path
@@ -64,6 +65,10 @@ def dump_yaml(path: str | Path, payload: dict[str, Any]) -> None:
 
 def config_to_mapping(config: SimulationConfig) -> dict[str, Any]:
     return asdict(config)
+
+
+def clone_config(config: SimulationConfig) -> SimulationConfig:
+    return copy.deepcopy(config)
 
 
 def config_from_mapping(data: dict[str, Any]) -> SimulationConfig:

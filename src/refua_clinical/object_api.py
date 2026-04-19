@@ -15,6 +15,7 @@ from .admet_integration import (
 from .explainability import build_advice_report, render_advice_markdown
 from .io import (
     apply_set_overrides,
+    clone_config,
     config_from_mapping,
     config_to_mapping,
     dump_json,
@@ -419,7 +420,7 @@ class ClinicalStudy:
         return self._refua_context
 
     def copy(self) -> ClinicalStudy:
-        clone = ClinicalStudy.from_config(config_to_mapping(self._config))
+        clone = ClinicalStudy.from_config(clone_config(self._config))
         if self._admet_context is not None:
             clone._admet_context = dict(self._admet_context)
         if self._refua_context is not None:
@@ -586,7 +587,7 @@ class ClinicalStudy:
         replicates: int | None = None,
         seed: int | None = None,
     ) -> ClinicalRun:
-        run_config = config_from_mapping(config_to_mapping(self._config))
+        run_config = clone_config(self._config)
         if replicates is not None:
             run_config.replicates = int(replicates)
         if seed is not None:
