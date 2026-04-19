@@ -9,6 +9,15 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 ### Added
 - No changes yet.
 
+## [0.8.0] - 2026-04-19
+
+### Changed
+- Reduced import overhead by switching the top-level package exports to lazy loading.
+- Reworked the trial simulator hot path to use array-backed enrollment state instead of per-patient dict/DataFrame churn.
+- Reused generated virtual populations across protocol, optimization, and VOI candidate evaluation loops.
+- Replaced repeated config serialize/parse cycles in internal hot paths with direct config cloning.
+- Vectorized more of the longitudinal PD generation path and applied operational shifts during PD simulation.
+
 ## [0.2.0] - 2026-02-16
 
 ### Added
