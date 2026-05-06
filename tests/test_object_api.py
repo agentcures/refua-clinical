@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from refua_clinical.io import clinical_trial_from_mapping, clinical_trial_to_mapping
 from refua_clinical.object_api import ClinicalStudy
 
 
@@ -156,3 +157,23 @@ def test_object_api_modality_preset_applies_shared_profile() -> None:
     assert config.pk_model.modality == "biologic"
     assert config.pk_model.route == "iv"
     assert float(config.pk_model.tmdd_strength) == 0.3
+
+
+def test_run_exports_complete_clinical_trial_object() -> None:
+    run = ClinicalStudy.default().trial(trial_id="trial-object", replicates=6).simulate()
+    protocol = run.recommend_protocol(
+        replicates_per_candidate=20,
+        candidate_total_n=[90],
+        candidate_interims=[20],
+    )
+    trial = run.to_trial(title="Trial Object", protocol=protocol)
+
+    assert trial.trial_id == "trial-object"
+    assert trial.config is run.config
+    assert trial.result is run.result
+    assert trial.artifacts.protocol is protocol.recommendation
+
+    restored = clinical_trial_from_mapping(clinical_trial_to_mapping(trial))
+    assert restored.trial_id == "trial-object"
+    assert restored.result is not None
+    assert restored.artifacts.protocol is not None

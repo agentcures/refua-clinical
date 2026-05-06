@@ -15,6 +15,7 @@ from .admet_integration import (
 from .explainability import build_advice_report, render_advice_markdown
 from .io import (
     apply_set_overrides,
+    clinical_trial_to_mapping,
     clone_config,
     config_from_mapping,
     config_to_mapping,
@@ -23,7 +24,14 @@ from .io import (
     load_mapping,
 )
 from .modality import apply_modality_preset
-from .models import ProtocolRecommendation, SimulationConfig, default_simulation_config
+from .models import (
+    ClinicalTrial,
+    ClinicalTrialArtifacts,
+    ClinicalTrialContext,
+    ProtocolRecommendation,
+    SimulationConfig,
+    default_simulation_config,
+)
 from .optimization import optimization_to_markdown, optimize_design_space
 from .protocol import recommend_protocol, render_protocol_markdown
 from .refua_bridge import (
@@ -151,6 +159,29 @@ class ClinicalWorkup:
     advice: ClinicalAdvice
     transportability: dict[str, Any] | None = None
 
+    def to_trial(
+        self,
+        *,
+        title: str | None = None,
+        status: str = "simulated",
+        sponsor: str | None = None,
+        registry_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> ClinicalTrial:
+        """Return this workup as a complete typed clinical trial aggregate."""
+        return self.run.to_trial(
+            title=title,
+            status=status,
+            sponsor=sponsor,
+            registry_id=registry_id,
+            protocol=self.protocol,
+            optimization=self.optimization,
+            voi=self.voi,
+            advice=self.advice,
+            transportability=self.transportability,
+            metadata=metadata,
+        )
+
     def save(self, output_dir: str | Path) -> dict[str, str | None]:
         out = Path(output_dir)
         out.mkdir(parents=True, exist_ok=True)
@@ -225,6 +256,48 @@ class ClinicalRun:
 
     def save(self, path: str | Path) -> ClinicalRun:
         dump_json(path, self.payload)
+        return self
+
+    def to_trial(
+        self,
+        *,
+        title: str | None = None,
+        status: str = "simulated",
+        sponsor: str | None = None,
+        registry_id: str | None = None,
+        protocol: ClinicalProtocol | None = None,
+        optimization: ClinicalOptimization | None = None,
+        voi: ClinicalVOI | None = None,
+        advice: ClinicalAdvice | None = None,
+        transportability: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> ClinicalTrial:
+        """Return this run as a typed clinical trial aggregate."""
+        trial = ClinicalTrial.from_result(
+            self.result,
+            title=title,
+            status=status,
+            sponsor=sponsor,
+            registry_id=registry_id,
+            artifacts=ClinicalTrialArtifacts(
+                protocol=protocol.recommendation if protocol is not None else None,
+                optimization=optimization.to_dict() if optimization is not None else None,
+                value_of_information=voi.to_dict() if voi is not None else None,
+                advice_report=advice.to_dict() if advice is not None else None,
+                transportability=transportability,
+            ),
+            context=ClinicalTrialContext(
+                admet=self.admet_context,
+                refua=self.refua_context,
+            ),
+            metadata=metadata,
+        )
+        trial.validate_consistency()
+        return trial
+
+    def save_trial(self, path: str | Path, **kwargs: Any) -> ClinicalRun:
+        """Persist the run as a complete clinical trial aggregate."""
+        dump_json(path, clinical_trial_to_mapping(self.to_trial(**kwargs)))
         return self
 
     def recommend_protocol(

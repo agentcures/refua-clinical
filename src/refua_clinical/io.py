@@ -14,6 +14,10 @@ from .models import (
     AdaptiveDesignSpec,
     AlphaSpendingKind,
     ArmSpec,
+    CandidateProtocolScore,
+    ClinicalTrial,
+    ClinicalTrialArtifacts,
+    ClinicalTrialContext,
     CovariateSpec,
     DistributionKind,
     EndpointKind,
@@ -23,16 +27,21 @@ from .models import (
     EstimandStrategy,
     ExternalControlSpec,
     HeterogeneitySpec,
+    InterimUpdate,
     ModalityKind,
     OperationalCostSpec,
     PDModelSpec,
     PKModelSpec,
+    ProtocolRecommendation,
+    ReplicateResult,
     RouteKind,
     SimulationConfig,
     StoppingSpec,
     TransportMethod,
+    TrialSimulationResult,
     VirtualPopulationSpec,
 )
+from .trial import trial_result_to_mapping
 
 
 def load_mapping(path: str | Path) -> dict[str, Any]:
@@ -65,6 +74,150 @@ def dump_yaml(path: str | Path, payload: dict[str, Any]) -> None:
 
 def config_to_mapping(config: SimulationConfig) -> dict[str, Any]:
     return asdict(config)
+
+
+def clinical_trial_to_mapping(trial: ClinicalTrial) -> dict[str, Any]:
+    trial.validate_consistency()
+    return {
+        "trial_id": trial.trial_id,
+        "title": trial.title,
+        "phase": trial.phase,
+        "status": trial.status,
+        "indication": trial.indication,
+        "sponsor": trial.sponsor,
+        "registry_id": trial.registry_id,
+        "config": config_to_mapping(trial.config) if trial.config is not None else None,
+        "result": (
+            trial_result_to_mapping(trial.result) if trial.result is not None else None
+        ),
+        "artifacts": clinical_trial_artifacts_to_mapping(trial.artifacts),
+        "context": clinical_trial_context_to_mapping(trial.context),
+        "metadata": dict(trial.metadata),
+    }
+
+
+def clinical_trial_artifacts_to_mapping(
+    artifacts: ClinicalTrialArtifacts,
+) -> dict[str, Any]:
+    protocol = None
+    if artifacts.protocol is not None:
+        protocol = {
+            "protocol": dict(artifacts.protocol.protocol),
+            "candidates": [asdict(item) for item in artifacts.protocol.candidates],
+        }
+    return {
+        "protocol": protocol,
+        "optimization": artifacts.optimization,
+        "value_of_information": artifacts.value_of_information,
+        "advice_report": artifacts.advice_report,
+        "transportability": artifacts.transportability,
+    }
+
+
+def clinical_trial_context_to_mapping(context: ClinicalTrialContext) -> dict[str, Any]:
+    return {
+        "admet": context.admet,
+        "refua": context.refua,
+        "metadata": dict(context.metadata),
+    }
+
+
+def clinical_trial_from_mapping(data: dict[str, Any]) -> ClinicalTrial:
+    config_raw = data.get("config", data.get("simulation_config"))
+    result_raw = data.get("result", data.get("simulation_result"))
+    config = (
+        config_from_mapping(_mapping(config_raw)) if isinstance(config_raw, dict) else None
+    )
+    result = (
+        trial_result_from_mapping(_mapping(result_raw))
+        if isinstance(result_raw, dict)
+        else None
+    )
+    trial = ClinicalTrial(
+        trial_id=_required_str(data, "trial_id"),
+        title=_required_str(data, "title"),
+        phase=_required_str(data, "phase"),
+        status=str(data.get("status", "planned")),
+        indication=_optional_str(data.get("indication")),
+        sponsor=_optional_str(data.get("sponsor")),
+        registry_id=_optional_str(data.get("registry_id")),
+        config=config,
+        result=result,
+        artifacts=clinical_trial_artifacts_from_mapping(_mapping(data.get("artifacts"))),
+        context=clinical_trial_context_from_mapping(_mapping(data.get("context"))),
+        metadata=_mapping(data.get("metadata")),
+    )
+    if trial.config is None and trial.result is not None:
+        trial.config = trial.result.config
+    trial.validate_consistency()
+    return trial
+
+
+def clinical_trial_artifacts_from_mapping(
+    data: dict[str, Any],
+) -> ClinicalTrialArtifacts:
+    protocol_raw = data.get("protocol")
+    return ClinicalTrialArtifacts(
+        protocol=(
+            protocol_recommendation_from_mapping(_mapping(protocol_raw))
+            if isinstance(protocol_raw, dict)
+            else None
+        ),
+        optimization=(
+            _mapping(data.get("optimization"))
+            if isinstance(data.get("optimization"), dict)
+            else None
+        ),
+        value_of_information=(
+            _mapping(data.get("value_of_information"))
+            if isinstance(data.get("value_of_information"), dict)
+            else None
+        ),
+        advice_report=(
+            _mapping(data.get("advice_report"))
+            if isinstance(data.get("advice_report"), dict)
+            else None
+        ),
+        transportability=(
+            _mapping(data.get("transportability"))
+            if isinstance(data.get("transportability"), dict)
+            else None
+        ),
+    )
+
+
+def clinical_trial_context_from_mapping(data: dict[str, Any]) -> ClinicalTrialContext:
+    return ClinicalTrialContext(
+        admet=_mapping(data.get("admet")) if isinstance(data.get("admet"), dict) else None,
+        refua=_mapping(data.get("refua")) if isinstance(data.get("refua"), dict) else None,
+        metadata=_mapping(data.get("metadata")),
+    )
+
+
+def protocol_recommendation_from_mapping(data: dict[str, Any]) -> ProtocolRecommendation:
+    candidates_raw = data.get("candidates", [])
+    if not isinstance(candidates_raw, list):
+        raise ValueError("protocol candidates must be a list")
+    return ProtocolRecommendation(
+        protocol=_mapping(data.get("protocol")),
+        candidates=[
+            CandidateProtocolScore(**_coerce_candidate_score(_mapping(item)))
+            for item in candidates_raw
+        ],
+    )
+
+
+def trial_result_from_mapping(data: dict[str, Any]) -> TrialSimulationResult:
+    config = config_from_mapping(_mapping(data.get("config")))
+    replicates_raw = data.get("replicates", [])
+    if not isinstance(replicates_raw, list):
+        raise ValueError("replicates must be a list")
+    return TrialSimulationResult(
+        run_id=_required_str(data, "run_id"),
+        config=config,
+        summary=_mapping(data.get("summary")),
+        replicates=[_replicate_result_from_mapping(_mapping(item)) for item in replicates_raw],
+    )
 
 
 def clone_config(config: SimulationConfig) -> SimulationConfig:
@@ -356,12 +509,104 @@ def _required_str(mapping: dict[str, Any], key: str) -> str:
     return text
 
 
+def _optional_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
 def _mapping(value: Any) -> dict[str, Any]:
     if value is None:
         return {}
     if not isinstance(value, dict):
         raise ValueError("Expected mapping/object value")
     return dict(value)
+
+
+def _coerce_candidate_score(data: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "total_n": int(data.get("total_n", 0)),
+        "interim_every": int(data.get("interim_every", 0)),
+        "power": float(data.get("power", 0.0)),
+        "expected_effect": float(data.get("expected_effect", 0.0)),
+        "safety_rate": float(data.get("safety_rate", 0.0)),
+        "expected_sample_size": float(data.get("expected_sample_size", 0.0)),
+        "expected_cost": float(data.get("expected_cost", 0.0)),
+        "utility": float(data.get("utility", 0.0)),
+        "burn_in_n": int(data.get("burn_in_n", 0)),
+        "min_allocation": float(data.get("min_allocation", 0.0)),
+        "success_threshold": float(data.get("success_threshold", 0.0)),
+    }
+
+
+def _replicate_result_from_mapping(data: dict[str, Any]) -> ReplicateResult:
+    return ReplicateResult(
+        replicate_id=int(data.get("replicate_id", 0)),
+        treatment_effect=float(data.get("treatment_effect", 0.0)),
+        p_value=float(data.get("p_value", 1.0)),
+        achieved_target=bool(data.get("achieved_target", False)),
+        responders_treatment=float(data.get("responders_treatment", 0.0)),
+        responders_control=float(data.get("responders_control", 0.0)),
+        safety_event_rate=float(data.get("safety_event_rate", 0.0)),
+        enrolled_n=int(data.get("enrolled_n", 0)),
+        stop_reason=_optional_str(data.get("stop_reason")),
+        stop_interim_index=(
+            int(data["stop_interim_index"])
+            if data.get("stop_interim_index") is not None
+            else None
+        ),
+        effective_external_weight=float(data.get("effective_external_weight", 0.0)),
+        decision_cards=[
+            _mapping(item) for item in _list_of_dicts(data.get("decision_cards"))
+        ],
+        allocation_trace=[
+            _interim_update_from_mapping(item)
+            for item in _list_of_dicts(data.get("allocation_trace"))
+        ],
+        event_rate=(
+            float(data["event_rate"]) if data.get("event_rate") is not None else None
+        ),
+        active_arm_ids=[str(item) for item in _list_or_empty(data.get("active_arm_ids"))],
+        dropped_arm_ids=[
+            str(item) for item in _list_or_empty(data.get("dropped_arm_ids"))
+        ],
+        arm_enrollment_counts={
+            str(key): int(value)
+            for key, value in _mapping(data.get("arm_enrollment_counts")).items()
+        },
+        analysis_method=_optional_str(data.get("analysis_method")),
+        effect_measure=_optional_str(data.get("effect_measure")),
+        effect_raw=(
+            float(data["effect_raw"]) if data.get("effect_raw") is not None else None
+        ),
+    )
+
+
+def _interim_update_from_mapping(data: dict[str, Any]) -> InterimUpdate:
+    return InterimUpdate(
+        enrolled_n=int(data.get("enrolled_n", 0)),
+        allocation={
+            str(key): float(value)
+            for key, value in _mapping(data.get("allocation")).items()
+        },
+        posterior_best_probability={
+            str(key): float(value)
+            for key, value in _mapping(data.get("posterior_best_probability")).items()
+        },
+    )
+
+
+def _list_or_empty(value: Any) -> list[Any]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError("Expected list value")
+    return list(value)
+
+
+def _list_of_dicts(value: Any) -> list[dict[str, Any]]:
+    return [_mapping(item) for item in _list_or_empty(value)]
 
 
 def _coerce_numeric_fields(source: dict[str, Any], defaults: Any) -> dict[str, Any]:

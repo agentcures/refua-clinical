@@ -14,10 +14,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from .modality import apply_modality_preset, list_modality_presets
     from .models import (
         AdaptiveDesignSpec,
         ArmSpec,
         CandidateProtocolScore,
+        ClinicalTrial,
+        ClinicalTrialArtifacts,
+        ClinicalTrialContext,
         CovariateSpec,
         EndpointSpec,
         EnrollmentSpec,
@@ -49,7 +53,6 @@ if TYPE_CHECKING:
     from .refua_bridge import RefuaIntegrationPolicy
     from .trial_management import ClinicalTrialManager, default_trial_store_path
     from .virtual_patients import VirtualPopulation
-    from .modality import apply_modality_preset, list_modality_presets
 
 
 def _read_version_from_pyproject() -> str | None:
@@ -81,6 +84,9 @@ _LAZY_EXPORTS = {
     "AdaptiveDesignSpec": (".models", "AdaptiveDesignSpec"),
     "ArmSpec": (".models", "ArmSpec"),
     "CandidateProtocolScore": (".models", "CandidateProtocolScore"),
+    "ClinicalTrial": (".models", "ClinicalTrial"),
+    "ClinicalTrialArtifacts": (".models", "ClinicalTrialArtifacts"),
+    "ClinicalTrialContext": (".models", "ClinicalTrialContext"),
     "ClinicalAdvice": (".object_api", "ClinicalAdvice"),
     "ClinicalOptimization": (".object_api", "ClinicalOptimization"),
     "ClinicalProtocol": (".object_api", "ClinicalProtocol"),
@@ -134,6 +140,9 @@ __all__ = [
     "AdaptiveDesignSpec",
     "ArmSpec",
     "CandidateProtocolScore",
+    "ClinicalTrial",
+    "ClinicalTrialArtifacts",
+    "ClinicalTrialContext",
     "ClinicalAdvice",
     "ClinicalOptimization",
     "ClinicalProtocol",

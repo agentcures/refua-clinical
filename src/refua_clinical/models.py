@@ -249,6 +249,117 @@ class ProtocolRecommendation:
     candidates: list[CandidateProtocolScore]
 
 
+@dataclass(slots=True)
+class ClinicalTrialArtifacts:
+    """Downstream generated artifacts attached to a clinical trial."""
+
+    protocol: ProtocolRecommendation | None = None
+    optimization: dict[str, Any] | None = None
+    value_of_information: dict[str, Any] | None = None
+    advice_report: dict[str, Any] | None = None
+    transportability: dict[str, Any] | None = None
+
+
+@dataclass(slots=True)
+class ClinicalTrialContext:
+    """External context used to derive or adjust the trial design."""
+
+    admet: dict[str, Any] | None = None
+    refua: dict[str, Any] | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class ClinicalTrial:
+    """Complete typed clinical trial aggregate for Refua clinical workflows."""
+
+    trial_id: str
+    title: str
+    phase: str
+    status: str = "planned"
+    indication: str | None = None
+    sponsor: str | None = None
+    registry_id: str | None = None
+    config: SimulationConfig | None = None
+    result: TrialSimulationResult | None = None
+    artifacts: ClinicalTrialArtifacts = field(default_factory=ClinicalTrialArtifacts)
+    context: ClinicalTrialContext = field(default_factory=ClinicalTrialContext)
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_config(
+        cls,
+        config: SimulationConfig,
+        *,
+        title: str | None = None,
+        status: str = "planned",
+        sponsor: str | None = None,
+        registry_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> ClinicalTrial:
+        """Build a trial aggregate from a simulation configuration."""
+        return cls(
+            trial_id=config.trial_id,
+            title=title or f"{config.indication} {config.phase} clinical trial",
+            phase=config.phase,
+            status=status,
+            indication=config.indication,
+            sponsor=sponsor,
+            registry_id=registry_id,
+            config=config,
+            metadata=dict(metadata or {}),
+        )
+
+    @classmethod
+    def from_result(
+        cls,
+        result: TrialSimulationResult,
+        *,
+        title: str | None = None,
+        status: str = "simulated",
+        sponsor: str | None = None,
+        registry_id: str | None = None,
+        artifacts: ClinicalTrialArtifacts | None = None,
+        context: ClinicalTrialContext | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> ClinicalTrial:
+        """Build a trial aggregate from a simulation result."""
+        config = result.config
+        return cls(
+            trial_id=config.trial_id,
+            title=title or f"{config.indication} {config.phase} clinical trial",
+            phase=config.phase,
+            status=status,
+            indication=config.indication,
+            sponsor=sponsor,
+            registry_id=registry_id,
+            config=config,
+            result=result,
+            artifacts=artifacts or ClinicalTrialArtifacts(),
+            context=context or ClinicalTrialContext(),
+            metadata=dict(metadata or {}),
+        )
+
+    def with_result(self, result: TrialSimulationResult) -> ClinicalTrial:
+        """Attach a simulation result and align config metadata from it."""
+        self.result = result
+        self.config = result.config
+        self.trial_id = result.config.trial_id
+        self.phase = result.config.phase
+        self.indication = result.config.indication
+        return self
+
+    def validate_consistency(self) -> None:
+        """Validate that attached clinical subobjects describe the same trial."""
+        if self.config is not None and self.config.trial_id != self.trial_id:
+            raise ValueError("config.trial_id must match trial_id")
+        if self.result is not None:
+            if self.result.config.trial_id != self.trial_id:
+                raise ValueError("result.config.trial_id must match trial_id")
+            if self.config is not None and self.result.config.trial_id != self.config.trial_id:
+                raise ValueError("result.config.trial_id must match config.trial_id")
+
+
 def default_covariates() -> list[CovariateSpec]:
     return [
         CovariateSpec(
