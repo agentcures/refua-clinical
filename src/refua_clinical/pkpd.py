@@ -192,7 +192,9 @@ def simulate_pk_metrics(
     modality = _resolve_modality_profile(modality_key)
     route = _resolve_route_profile(route_key)
 
-    tau, total_dose, terminal_dose = _dosing_schedule(arm=arm, duration_days=duration_days)
+    tau, total_dose, terminal_dose = _dosing_schedule(
+        arm=arm, duration_days=duration_days
+    )
     bioavailability = modality.effective_bioavailability(
         route=route_key,
         base=float(pk_model.bioavailability),
@@ -244,7 +246,8 @@ def _dosing_schedule(*, arm: ArmSpec, duration_days: int) -> tuple[float, float,
         step_every = max(int(np.ceil(titration_interval_hours / tau)), 1)
         step_index = np.arange(administrations, dtype=int) // step_every
         doses = np.maximum(
-            float(arm.dose_mg) + float(arm.titration_step_mg) * step_index.astype(float),
+            float(arm.dose_mg)
+            + float(arm.titration_step_mg) * step_index.astype(float),
             0.0,
         )
         total_dose = float(np.sum(doses))
@@ -285,7 +288,7 @@ def simulate_pd_outcomes(
         raise ValueError("Need at least one patient for PD simulation")
 
     baseline = rng.normal(pd_model.baseline_mean, pd_model.baseline_sd, size=n)
-    visit_days = sorted(set(int(day) for day in endpoint.visit_days if int(day) > 0))
+    visit_days = sorted({int(day) for day in endpoint.visit_days if int(day) > 0})
     if not visit_days:
         visit_days = [int(endpoint.assessment_day)]
     last_visit_day = max(max(visit_days), int(endpoint.assessment_day), 1)
@@ -342,7 +345,9 @@ def simulate_pd_outcomes(
         base_hazard = 1.0 / max(float(endpoint.event_horizon_day) * 0.75, 1.0)
         age = _series(covariates, "age", 60.0)
         biomarker = _series(covariates, "biomarker_z", default=0.0)
-        benefit_scale = np.clip(change / max(abs(endpoint.target_difference), 1.0), -2.5, 2.5)
+        benefit_scale = np.clip(
+            change / max(abs(endpoint.target_difference), 1.0), -2.5, 2.5
+        )
         target_hr = float(np.clip(endpoint.target_hazard_ratio, 0.10, 1.50))
         treatment_hr = np.exp(np.log(max(target_hr, 1e-3)) * benefit_scale)
         hazard = (
@@ -364,7 +369,9 @@ def simulate_pd_outcomes(
         response_curve = 1.0 - np.exp(-3.0 * (visit_day_array / float(last_visit_day)))
         visit_scale = np.sqrt(visit_day_array / float(last_visit_day))
         drift_scale = visit_day_array / float(last_visit_day)
-        visit_noise = rng.normal(0.0, pd_model.residual_sd * 0.5, size=(n, len(visit_days)))
+        visit_noise = rng.normal(
+            0.0, pd_model.residual_sd * 0.5, size=(n, len(visit_days))
+        )
         visit_change_matrix = (
             pd_model.placebo_improvement_per_day * visit_day_array[None, :]
             + treatment_effect[:, None] * response_curve[None, :]
@@ -381,7 +388,9 @@ def simulate_pd_outcomes(
         for patient_changes in visit_change_matrix:
             patient_profile = [
                 {"day": float(day), "change": float(day_change)}
-                for day, day_change in zip(visit_day_array, patient_changes, strict=True)
+                for day, day_change in zip(
+                    visit_day_array, patient_changes, strict=True
+                )
             ]
             profiles.append(patient_profile)
         visit_values = pd.Series(profiles, dtype=object)

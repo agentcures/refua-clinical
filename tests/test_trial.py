@@ -69,7 +69,9 @@ def test_simulate_trials_supports_live_arm_addition_and_backfill() -> None:
 
     assert result.summary["endpoint_kind"] == "longitudinal"
     assert result.summary["analysis_method"] == "mmrm_cluster_ols"
-    assert any(rep.arm_enrollment_counts.get("late_combo", 0) > 0 for rep in result.replicates)
+    assert any(
+        rep.arm_enrollment_counts.get("late_combo", 0) > 0 for rep in result.replicates
+    )
     assert any(
         "late_combo" in card.get("active_arms", [])
         for rep in result.replicates

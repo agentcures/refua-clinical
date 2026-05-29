@@ -224,7 +224,9 @@ def _propensity_weights(reference: pd.DataFrame, target: pd.DataFrame) -> np.nda
         x0=np.zeros(x_scaled.shape[1] + 1, dtype=float),
         method="L-BFGS-B",
     )
-    params = result.x if result.success else np.zeros(x_scaled.shape[1] + 1, dtype=float)
+    params = (
+        result.x if result.success else np.zeros(x_scaled.shape[1] + 1, dtype=float)
+    )
     logits_ref = params[0] + ((x_ref - mean) / sd) @ params[1:]
     probs_ref = 1.0 / (1.0 + np.exp(-np.clip(logits_ref, -30.0, 30.0)))
     probs_ref = np.clip(probs_ref, 1e-4, 1.0 - 1e-4)

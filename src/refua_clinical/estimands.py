@@ -56,7 +56,7 @@ def estimand_summary(analysis_frame: pd.DataFrame) -> dict[str, Any]:
         }
 
     return {
-        "n": int(len(analysis_frame)),
+        "n": len(analysis_frame),
         "mean_endpoint": float(analysis_frame["analysis_value"].mean()),
         "responder_rate": float(analysis_frame["analysis_responder"].mean()),
         "dropout_rate": float(analysis_frame["dropped_out"].mean()),

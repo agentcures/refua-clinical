@@ -113,18 +113,22 @@ def summarize_simulation(replicates: list[ReplicateResult]) -> dict[str, Any]:
     )
     raw_effects = np.array(
         [
-            float(rep.effect_raw)
-            if rep.effect_raw is not None and np.isfinite(float(rep.effect_raw))
-            else float("nan")
+            (
+                float(rep.effect_raw)
+                if rep.effect_raw is not None and np.isfinite(float(rep.effect_raw))
+                else float("nan")
+            )
             for rep in replicates
         ],
         dtype=float,
     )
     event_rates = np.array(
         [
-            float(rep.event_rate)
-            if rep.event_rate is not None and np.isfinite(float(rep.event_rate))
-            else float("nan")
+            (
+                float(rep.event_rate)
+                if rep.event_rate is not None and np.isfinite(float(rep.event_rate))
+                else float("nan")
+            )
             for rep in replicates
         ],
         dtype=float,
@@ -139,7 +143,7 @@ def summarize_simulation(replicates: list[ReplicateResult]) -> dict[str, Any]:
     )
 
     summary = {
-        "replicates": int(len(replicates)),
+        "replicates": len(replicates),
         "power": float(np.nanmean(target_hits)),
         "mean_effect": float(np.nanmean(effects)),
         "effect_p10": float(np.nanpercentile(effects, 10)),
@@ -157,9 +161,11 @@ def summarize_simulation(replicates: list[ReplicateResult]) -> dict[str, Any]:
         "effective_external_weight_mean": float(np.nanmean(ext_weight)),
         "active_arm_count_mean": float(np.nanmean(active_arm_counts)),
         "dropped_arm_count_mean": float(np.nanmean(dropped_arm_counts)),
-        "endpoint_kind": str(replicates[0].decision_cards[0].get("endpoint_kind"))
-        if replicates[0].decision_cards
-        else None,
+        "endpoint_kind": (
+            str(replicates[0].decision_cards[0].get("endpoint_kind"))
+            if replicates[0].decision_cards
+            else None
+        ),
         "analysis_method": replicates[0].analysis_method,
         "effect_measure": replicates[0].effect_measure,
     }
@@ -632,7 +638,9 @@ def _simulate_potential_outcomes(
         if config.endpoint.kind == "time_to_event":
             out["responder"] = ~out["event_observed"].astype(bool)
         else:
-            out["responder"] = out["endpoint_value"] >= config.endpoint.target_difference
+            out["responder"] = (
+                out["endpoint_value"] >= config.endpoint.target_difference
+            )
         outcomes[arm.arm_id] = _ArmOutcomeArrays(
             endpoint_value=out["endpoint_value"].to_numpy(dtype=float, copy=False),
             change=out["change"].to_numpy(dtype=float, copy=False),
@@ -846,7 +854,11 @@ def _normalize_allocation_for_active_arms(
                 int(arm.backfill_target_n)
                 if arm.backfill_target_n is not None
                 else max(
-                    [arm_counts.get(other.arm_id, 0) for other in arms if not other.is_control]
+                    [
+                        arm_counts.get(other.arm_id, 0)
+                        for other in arms
+                        if not other.is_control
+                    ]
                     or [0]
                 )
             )
@@ -874,18 +886,24 @@ def _active_arm_ids(
     for arm in arms:
         if enrolled_n < max(int(arm.opens_at_enrollment), 0):
             continue
-        if arm.opens_at_interim is not None and interim_index < int(arm.opens_at_interim):
+        if arm.opens_at_interim is not None and interim_index < int(
+            arm.opens_at_interim
+        ):
             continue
         if (
             arm.opens_after_arm_drop is not None
             and str(arm.opens_after_arm_drop) not in dropped_arm_ids
         ):
             continue
-        if arm.closes_at_interim is not None and interim_index >= int(arm.closes_at_interim):
+        if arm.closes_at_interim is not None and interim_index >= int(
+            arm.closes_at_interim
+        ):
             continue
         if arm.arm_id in dropped_arm_ids:
             continue
-        if arm.max_patients is not None and arm_counts.get(arm.arm_id, 0) >= int(arm.max_patients):
+        if arm.max_patients is not None and arm_counts.get(arm.arm_id, 0) >= int(
+            arm.max_patients
+        ):
             continue
         active.append(arm.arm_id)
     return active
@@ -908,7 +926,9 @@ def _dropped_treatment_arms(
             continue
         if arm_counts.get(arm.arm_id, 0) < 4:
             continue
-        if float(posterior.get(arm.arm_id, 0.0)) <= float(config.adaptive.arm_drop_threshold):
+        if float(posterior.get(arm.arm_id, 0.0)) <= float(
+            config.adaptive.arm_drop_threshold
+        ):
             dropped.add(arm.arm_id)
     return dropped
 
@@ -943,7 +963,9 @@ def _meets_endpoint_target(
     if not np.isfinite(effect) or not np.isfinite(p_value) or p_value > 0.05:
         return False
     if endpoint.kind == "time_to_event":
-        return np.isfinite(effect_raw) and effect_raw <= float(endpoint.target_hazard_ratio)
+        return np.isfinite(effect_raw) and effect_raw <= float(
+            endpoint.target_hazard_ratio
+        )
     return effect >= float(endpoint.target_difference)
 
 

@@ -469,8 +469,8 @@ def _build_clinops_summary(trial: dict[str, Any]) -> dict[str, Any]:
     at_risk_sites.sort(key=lambda item: item["risk_score"], reverse=True)
 
     return {
-        "site_count": int(len(sites)),
-        "active_site_count": int(len(active_sites)),
+        "site_count": len(sites),
+        "active_site_count": len(active_sites),
         "screened_count": int(screened_count),
         "screen_fail_count": int(screen_fail_count),
         "screen_fail_rate": (
@@ -483,7 +483,7 @@ def _build_clinops_summary(trial: dict[str, Any]) -> dict[str, Any]:
         "unresolved_deviations": int(unresolved_deviations),
         "serious_safety_events": int(serious_safety_events),
         "open_monitoring_actions": int(open_action_items),
-        "milestone_count": int(len(milestones)),
+        "milestone_count": len(milestones),
         "completed_milestones": int(completed_milestones),
         "overdue_milestones": int(overdue_milestones),
         "planned_enrollment_human": int(planned_n),
@@ -649,8 +649,8 @@ def _build_management_summary(trial: dict[str, Any]) -> dict[str, Any]:
         "patient_count": int(patient_count_human + patient_count_simulated),
         "patient_count_human": int(patient_count_human),
         "patient_count_simulated": int(patient_count_simulated),
-        "result_count": int(len(results)),
-        "result_count_numeric": int(len(numeric_values)),
+        "result_count": len(results),
+        "result_count_numeric": len(numeric_values),
         "observed_endpoint_mean": (
             float(np.mean(numeric_values)) if numeric_values else None
         ),

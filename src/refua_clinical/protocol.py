@@ -34,7 +34,9 @@ def recommend_protocol(
     if candidate_min_allocations is None:
         candidate_min_allocations = [float(config.adaptive.min_allocation)]
     if candidate_success_thresholds is None:
-        candidate_success_thresholds = [float(config.stopping.success_posterior_threshold)]
+        candidate_success_thresholds = [
+            float(config.stopping.success_posterior_threshold)
+        ]
 
     candidates: list[CandidateProtocolScore] = []
     population_cache: dict[int, Any] = {}
@@ -59,7 +61,9 @@ def recommend_protocol(
                             candidate_config,
                             cache=population_cache,
                         )
-                        result = _simulate_trials_with_population(candidate_config, population)
+                        result = _simulate_trials_with_population(
+                            candidate_config, population
+                        )
                         power = float(result.summary["power"])
                         effect = float(result.summary["mean_effect"])
                         safety = float(result.summary["safety_event_rate"])
@@ -67,7 +71,8 @@ def recommend_protocol(
                             result.summary.get("expected_sample_size", total_n)
                         )
                         expected_cost = float(
-                            expected_sample_size * candidate_config.costs.cost_per_patient
+                            expected_sample_size
+                            * candidate_config.costs.cost_per_patient
                             + float(result.summary.get("allocation_interims_mean", 0.0))
                             * candidate_config.costs.cost_per_interim
                         )
@@ -180,7 +185,9 @@ def render_protocol_markdown(protocol: dict[str, Any]) -> str:
     lines.append(f"- Primary comparison: {stats['primary_comparison']}")
     lines.append(f"- Time-trend adjustment: {stats['time_trend_adjustment']}")
     lines.append(f"- External control borrowing: {stats['external_control']}")
-    lines.append(f"- Success posterior threshold: {stats['success_posterior_threshold']:.2f}")
+    lines.append(
+        f"- Success posterior threshold: {stats['success_posterior_threshold']:.2f}"
+    )
     lines.append("")
 
     lines.append("## Simulated Operating Characteristics")
@@ -292,7 +299,9 @@ def _build_protocol_payload(
                 else "Not used in primary analysis"
             ),
             "alpha": 0.05,
-            "success_posterior_threshold": float(config.stopping.success_posterior_threshold),
+            "success_posterior_threshold": float(
+                config.stopping.success_posterior_threshold
+            ),
         },
         "simulated_performance": {
             "power": best.power,

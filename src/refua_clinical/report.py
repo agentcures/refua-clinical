@@ -23,11 +23,15 @@ def render_workup_html(
         if isinstance(protocol_payload, dict)
         else {}
     )
-    optimization = _mapping(optimization_payload) if isinstance(optimization_payload, dict) else {}
+    optimization = (
+        _mapping(optimization_payload) if isinstance(optimization_payload, dict) else {}
+    )
     voi = _mapping(voi_payload) if isinstance(voi_payload, dict) else {}
     advice = _mapping(advice_payload) if isinstance(advice_payload, dict) else {}
     transportability = (
-        _mapping(transportability_payload) if isinstance(transportability_payload, dict) else {}
+        _mapping(transportability_payload)
+        if isinstance(transportability_payload, dict)
+        else {}
     )
 
     cards = [
@@ -51,15 +55,16 @@ def render_workup_html(
           </div>
           <div class="cards">{cards}</div>
         </section>
-        """
-        .format(cards="".join(cards)),
+        """.format(cards="".join(cards)),
         _json_section("Run Summary", summary),
     ]
 
     if protocol:
         sections.append(_protocol_section(protocol))
     if optimization:
-        sections.append(_json_section("Optimization", optimization.get("best_candidate")))
+        sections.append(
+            _json_section("Optimization", optimization.get("best_candidate"))
+        )
     if voi:
         sections.append(_json_section("VOI", voi.get("best_scenario")))
     if advice:

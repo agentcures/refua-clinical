@@ -160,7 +160,9 @@ def test_object_api_modality_preset_applies_shared_profile() -> None:
 
 
 def test_run_exports_complete_clinical_trial_object() -> None:
-    run = ClinicalStudy.default().trial(trial_id="trial-object", replicates=6).simulate()
+    run = (
+        ClinicalStudy.default().trial(trial_id="trial-object", replicates=6).simulate()
+    )
     protocol = run.recommend_protocol(
         replicates_per_candidate=20,
         candidate_total_n=[90],

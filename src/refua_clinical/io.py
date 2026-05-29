@@ -126,7 +126,9 @@ def clinical_trial_from_mapping(data: dict[str, Any]) -> ClinicalTrial:
     config_raw = data.get("config", data.get("simulation_config"))
     result_raw = data.get("result", data.get("simulation_result"))
     config = (
-        config_from_mapping(_mapping(config_raw)) if isinstance(config_raw, dict) else None
+        config_from_mapping(_mapping(config_raw))
+        if isinstance(config_raw, dict)
+        else None
     )
     result = (
         trial_result_from_mapping(_mapping(result_raw))
@@ -143,7 +145,9 @@ def clinical_trial_from_mapping(data: dict[str, Any]) -> ClinicalTrial:
         registry_id=_optional_str(data.get("registry_id")),
         config=config,
         result=result,
-        artifacts=clinical_trial_artifacts_from_mapping(_mapping(data.get("artifacts"))),
+        artifacts=clinical_trial_artifacts_from_mapping(
+            _mapping(data.get("artifacts"))
+        ),
         context=clinical_trial_context_from_mapping(_mapping(data.get("context"))),
         metadata=_mapping(data.get("metadata")),
     )
@@ -188,13 +192,19 @@ def clinical_trial_artifacts_from_mapping(
 
 def clinical_trial_context_from_mapping(data: dict[str, Any]) -> ClinicalTrialContext:
     return ClinicalTrialContext(
-        admet=_mapping(data.get("admet")) if isinstance(data.get("admet"), dict) else None,
-        refua=_mapping(data.get("refua")) if isinstance(data.get("refua"), dict) else None,
+        admet=(
+            _mapping(data.get("admet")) if isinstance(data.get("admet"), dict) else None
+        ),
+        refua=(
+            _mapping(data.get("refua")) if isinstance(data.get("refua"), dict) else None
+        ),
         metadata=_mapping(data.get("metadata")),
     )
 
 
-def protocol_recommendation_from_mapping(data: dict[str, Any]) -> ProtocolRecommendation:
+def protocol_recommendation_from_mapping(
+    data: dict[str, Any],
+) -> ProtocolRecommendation:
     candidates_raw = data.get("candidates", [])
     if not isinstance(candidates_raw, list):
         raise ValueError("protocol candidates must be a list")
@@ -216,7 +226,9 @@ def trial_result_from_mapping(data: dict[str, Any]) -> TrialSimulationResult:
         run_id=_required_str(data, "run_id"),
         config=config,
         summary=_mapping(data.get("summary")),
-        replicates=[_replicate_result_from_mapping(_mapping(item)) for item in replicates_raw],
+        replicates=[
+            _replicate_result_from_mapping(_mapping(item)) for item in replicates_raw
+        ],
     )
 
 
@@ -312,7 +324,9 @@ def config_from_mapping(data: dict[str, Any]) -> SimulationConfig:
                 backfill_allocation_multiplier=float(
                     item.get("backfill_allocation_multiplier", 1.0)
                 ),
-                concurrent_control_only=bool(item.get("concurrent_control_only", False)),
+                concurrent_control_only=bool(
+                    item.get("concurrent_control_only", False)
+                ),
             )
         )
 
@@ -360,7 +374,9 @@ def config_from_mapping(data: dict[str, Any]) -> SimulationConfig:
                 default=[28, 56, int(endpoint_raw.get("assessment_day", 84))],
             ),
             event_horizon_day=int(
-                endpoint_raw.get("event_horizon_day", endpoint_raw.get("assessment_day", 168))
+                endpoint_raw.get(
+                    "event_horizon_day", endpoint_raw.get("assessment_day", 168)
+                )
             ),
             responder_threshold=float(endpoint_raw.get("responder_threshold", 12.0)),
             target_difference=float(endpoint_raw.get("target_difference", 6.0)),
@@ -567,7 +583,9 @@ def _replicate_result_from_mapping(data: dict[str, Any]) -> ReplicateResult:
         event_rate=(
             float(data["event_rate"]) if data.get("event_rate") is not None else None
         ),
-        active_arm_ids=[str(item) for item in _list_or_empty(data.get("active_arm_ids"))],
+        active_arm_ids=[
+            str(item) for item in _list_or_empty(data.get("active_arm_ids"))
+        ],
         dropped_arm_ids=[
             str(item) for item in _list_or_empty(data.get("dropped_arm_ids"))
         ],
@@ -697,10 +715,10 @@ def _parse_transport_method(raw: str) -> TransportMethod:
 
 def _parse_int_list(value: Any, *, default: list[int]) -> list[int]:
     if value is None:
-        return sorted(set(int(item) for item in default if int(item) > 0))
+        return sorted({int(item) for item in default if int(item) > 0})
     if not isinstance(value, list):
         raise ValueError("endpoint.visit_days must be a list of integers")
-    parsed = sorted(set(int(item) for item in value if int(item) > 0))
+    parsed = sorted({int(item) for item in value if int(item) > 0})
     if not parsed:
         raise ValueError("endpoint.visit_days must contain at least one positive day")
     return parsed

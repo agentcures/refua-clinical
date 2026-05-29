@@ -20,7 +20,9 @@ def estimate_value_of_information(
     if candidate_extra_n is None:
         candidate_extra_n = [0, 30, 60, 90]
     if candidate_success_thresholds is None:
-        candidate_success_thresholds = [float(config.stopping.success_posterior_threshold)]
+        candidate_success_thresholds = [
+            float(config.stopping.success_posterior_threshold)
+        ]
     if candidate_min_allocations is None:
         candidate_min_allocations = [float(config.adaptive.min_allocation)]
 
@@ -28,7 +30,7 @@ def estimate_value_of_information(
     scenarios: list[dict[str, Any]] = []
     population_cache: dict[int, Any] = {}
 
-    for extra_n in sorted(set(int(max(0, value)) for value in candidate_extra_n)):
+    for extra_n in sorted({int(max(0, value)) for value in candidate_extra_n}):
         for success_threshold in sorted(set(candidate_success_thresholds)):
             for min_allocation in sorted(set(candidate_min_allocations)):
                 scenario_n = baseline_n + extra_n
@@ -49,7 +51,9 @@ def estimate_value_of_information(
                     power=float(result.summary["power"]),
                     effect=float(result.summary["mean_effect"]),
                     safety=float(result.summary["safety_event_rate"]),
-                    expected_n=float(result.summary.get("expected_sample_size", scenario_n)),
+                    expected_n=float(
+                        result.summary.get("expected_sample_size", scenario_n)
+                    ),
                     config=scenario_config,
                 )
                 scenarios.append(

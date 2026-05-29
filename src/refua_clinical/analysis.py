@@ -192,14 +192,20 @@ def _simple_two_arm_analysis(
         commensurability_scale=external_control.commensurability_scale,
         robust_mixture=external_control.robust_mixture,
     )
-    treatment_var = float(np.var(treatment, ddof=1)) if treatment.size > 1 else float("nan")
+    treatment_var = (
+        float(np.var(treatment, ddof=1)) if treatment.size > 1 else float("nan")
+    )
     control_var = float(np.var(control, ddof=1)) if control.size > 1 else float("nan")
-    se = float(
-        np.sqrt(
-            treatment_var / max(float(treatment.size), 1.0)
-            + control_var / max(float(control.size), 1.0)
+    se = (
+        float(
+            np.sqrt(
+                treatment_var / max(float(treatment.size), 1.0)
+                + control_var / max(float(control.size), 1.0)
+            )
         )
-    ) if treatment.size > 1 and control.size > 1 else float("nan")
+        if treatment.size > 1 and control.size > 1
+        else float("nan")
+    )
     return AnalysisResult(
         treatment_id=treatment_id,
         effect=float(effect),
@@ -208,7 +214,9 @@ def _simple_two_arm_analysis(
         se=float(se),
         effective_external_weight=float(effective_weight),
         method="two_arm_z",
-        effect_measure="risk_difference" if endpoint.kind == "binary" else "mean_difference",
+        effect_measure=(
+            "risk_difference" if endpoint.kind == "binary" else "mean_difference"
+        ),
         treatment_n=treatment.size,
         control_n=control.size,
     )
@@ -222,11 +230,16 @@ def _cox_time_to_event_analysis(
 ) -> AnalysisResult:
     data = comparison.copy()
     if "event_observed" not in data.columns:
-        raise ValueError("time_to_event analysis requires event_observed in analysis frame")
+        raise ValueError(
+            "time_to_event analysis requires event_observed in analysis frame"
+        )
 
     duration = data["endpoint_value"].to_numpy(dtype=float)
     event = data["event_observed"].astype(bool).to_numpy(dtype=bool)
-    if np.sum(data["arm_id"] == treatment_id) < 4 or np.sum(data["arm_id"] == control_arm_id) < 4:
+    if (
+        np.sum(data["arm_id"] == treatment_id) < 4
+        or np.sum(data["arm_id"] == control_arm_id) < 4
+    ):
         return AnalysisResult(
             treatment_id=treatment_id,
             effect=float("nan"),
@@ -336,7 +349,9 @@ def _mmrm_like_longitudinal_analysis(
 
     treatment_indicator = (long_df["arm_id"] == treatment_id).astype(float).to_numpy()
     baseline = _numeric_series(long_df, "baseline", default=0.0).to_numpy(dtype=float)
-    block_index = _numeric_series(long_df, "block_index", default=0.0).to_numpy(dtype=float)
+    block_index = _numeric_series(long_df, "block_index", default=0.0).to_numpy(
+        dtype=float
+    )
 
     columns: list[np.ndarray] = [
         np.ones(len(long_df), dtype=float),
@@ -349,7 +364,9 @@ def _mmrm_like_longitudinal_analysis(
     reference_visit = visit_levels[0]
     final_visit = visit_levels[-1]
     for visit in visit_levels[1:]:
-        visit_indicator = (long_df["visit_day"].astype(int).to_numpy() == int(visit)).astype(float)
+        visit_indicator = (
+            long_df["visit_day"].astype(int).to_numpy() == int(visit)
+        ).astype(float)
         columns.append(visit_indicator)
         names.append(f"visit_{visit}")
         interaction = treatment_indicator * visit_indicator
@@ -483,8 +500,12 @@ def _coerce_float(value: Any) -> float | None:
 
 def _numeric_series(frame: pd.DataFrame, column: str, *, default: float) -> pd.Series:
     if column not in frame.columns:
-        return pd.Series(np.full(len(frame), float(default), dtype=float), index=frame.index)
+        return pd.Series(
+            np.full(len(frame), float(default), dtype=float), index=frame.index
+        )
     values = pd.to_numeric(frame[column], errors="coerce")
     if values.notna().any():
         return values.fillna(float(values.median()))
-    return pd.Series(np.full(len(frame), float(default), dtype=float), index=frame.index)
+    return pd.Series(
+        np.full(len(frame), float(default), dtype=float), index=frame.index
+    )

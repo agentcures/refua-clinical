@@ -128,7 +128,9 @@ def infer_population_spec_from_dataframe(
                 ),
             )
             encoded, _ = pd.factorize(series.fillna("__missing__").astype(str))
-            encoded_columns[column] = pd.Series(encoded.astype(float), index=series.index)
+            encoded_columns[column] = pd.Series(
+                encoded.astype(float), index=series.index
+            )
 
         missing_rate = float(series.isna().mean())
         if 0.0 < missing_rate < 1.0:
@@ -231,7 +233,7 @@ def _sample_marginal(
 
 
 def summarize_covariates(table: pd.DataFrame) -> dict[str, Any]:
-    summary: dict[str, Any] = {"n": int(len(table)), "covariates": {}}
+    summary: dict[str, Any] = {"n": len(table), "covariates": {}}
     for column in table.columns:
         if column == "patient_id":
             continue

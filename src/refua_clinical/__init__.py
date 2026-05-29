@@ -136,21 +136,22 @@ def __getattr__(name: str) -> Any:
 def __dir__() -> list[str]:
     return sorted([*globals().keys(), *_LAZY_EXPORTS.keys()])
 
+
 __all__ = [
     "AdaptiveDesignSpec",
     "ArmSpec",
     "CandidateProtocolScore",
-    "ClinicalTrial",
-    "ClinicalTrialArtifacts",
-    "ClinicalTrialContext",
     "ClinicalAdvice",
     "ClinicalOptimization",
     "ClinicalProtocol",
     "ClinicalRun",
     "ClinicalStudy",
+    "ClinicalTrial",
+    "ClinicalTrialArtifacts",
+    "ClinicalTrialContext",
+    "ClinicalTrialManager",
     "ClinicalVOI",
     "ClinicalWorkup",
-    "ClinicalTrialManager",
     "CovariateSpec",
     "EndpointSpec",
     "EnrollmentSpec",
@@ -171,8 +172,8 @@ __all__ = [
     "TrialSimulationResult",
     "VirtualPopulation",
     "VirtualPopulationSpec",
+    "__version__",
     "apply_modality_preset",
     "default_trial_store_path",
     "list_modality_presets",
-    "__version__",
 ]

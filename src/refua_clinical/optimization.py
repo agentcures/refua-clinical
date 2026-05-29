@@ -31,7 +31,9 @@ def optimize_design_space(
     if candidate_min_allocations is None:
         candidate_min_allocations = [float(config.adaptive.min_allocation)]
     if candidate_success_thresholds is None:
-        candidate_success_thresholds = [float(config.stopping.success_posterior_threshold)]
+        candidate_success_thresholds = [
+            float(config.stopping.success_posterior_threshold)
+        ]
 
     candidates: list[dict[str, Any]] = []
     population_cache: dict[int, Any] = {}
@@ -55,11 +57,17 @@ def optimize_design_space(
                             candidate_config,
                             cache=population_cache,
                         )
-                        result = _simulate_trials_with_population(candidate_config, population)
+                        result = _simulate_trials_with_population(
+                            candidate_config, population
+                        )
                         summary = result.summary
                         expected_n = float(summary.get("expected_sample_size", total_n))
-                        interim_mean = float(summary.get("allocation_interims_mean", 0.0))
-                        cost = _expected_cost(candidate_config, expected_n, interim_mean)
+                        interim_mean = float(
+                            summary.get("allocation_interims_mean", 0.0)
+                        )
+                        cost = _expected_cost(
+                            candidate_config, expected_n, interim_mean
+                        )
 
                         candidates.append(
                             {
@@ -70,11 +78,17 @@ def optimize_design_space(
                                 "success_threshold": float(success_threshold),
                                 "power": float(summary["power"]),
                                 "mean_effect": float(summary["mean_effect"]),
-                                "safety_event_rate": float(summary["safety_event_rate"]),
+                                "safety_event_rate": float(
+                                    summary["safety_event_rate"]
+                                ),
                                 "expected_sample_size": expected_n,
                                 "expected_cost": cost,
-                                "stop_success_rate": float(summary.get("stop_success_rate", 0.0)),
-                                "stop_futility_rate": float(summary.get("stop_futility_rate", 0.0)),
+                                "stop_success_rate": float(
+                                    summary.get("stop_success_rate", 0.0)
+                                ),
+                                "stop_futility_rate": float(
+                                    summary.get("stop_futility_rate", 0.0)
+                                ),
                             }
                         )
 

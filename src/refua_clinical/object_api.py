@@ -30,6 +30,7 @@ from .models import (
     ClinicalTrialContext,
     ProtocolRecommendation,
     SimulationConfig,
+    TrialSimulationResult,
     default_simulation_config,
 )
 from .optimization import optimization_to_markdown, optimize_design_space
@@ -41,7 +42,7 @@ from .refua_bridge import (
 )
 from .report import render_workup_html, write_workup_html
 from .transportability import assess_transportability
-from .trial import TrialSimulationResult, simulate_trials, trial_result_to_mapping
+from .trial import simulate_trials, trial_result_to_mapping
 from .voi import estimate_value_of_information, voi_to_markdown
 
 
@@ -281,7 +282,9 @@ class ClinicalRun:
             registry_id=registry_id,
             artifacts=ClinicalTrialArtifacts(
                 protocol=protocol.recommendation if protocol is not None else None,
-                optimization=optimization.to_dict() if optimization is not None else None,
+                optimization=(
+                    optimization.to_dict() if optimization is not None else None
+                ),
                 value_of_information=voi.to_dict() if voi is not None else None,
                 advice_report=advice.to_dict() if advice is not None else None,
                 transportability=transportability,
@@ -397,7 +400,9 @@ class ClinicalRun:
         columns: list[str] | None = None,
         method: str = "none",
     ) -> dict[str, Any]:
-        return assess_transportability(reference, target, columns=columns, method=method)
+        return assess_transportability(
+            reference, target, columns=columns, method=method
+        )
 
     def workup(
         self,

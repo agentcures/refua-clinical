@@ -356,7 +356,10 @@ class ClinicalTrial:
         if self.result is not None:
             if self.result.config.trial_id != self.trial_id:
                 raise ValueError("result.config.trial_id must match trial_id")
-            if self.config is not None and self.result.config.trial_id != self.config.trial_id:
+            if (
+                self.config is not None
+                and self.result.config.trial_id != self.config.trial_id
+            ):
                 raise ValueError("result.config.trial_id must match config.trial_id")
 
 
