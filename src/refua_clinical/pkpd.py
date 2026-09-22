@@ -339,7 +339,9 @@ def simulate_pd_outcomes(
     visit_values: pd.Series[Any]
     if endpoint.kind == "binary":
         responders = change >= endpoint.responder_threshold
-        endpoint_value = responders.astype(float) + shift
+        # `shift` is already included in `change`, so the recorded endpoint
+        # stays a 0/1 responder indicator.
+        endpoint_value = responders.astype(float)
         visit_values = pd.Series(np.full(n, None, dtype=object), dtype=object)
     elif endpoint.kind == "time_to_event":
         base_hazard = 1.0 / max(float(endpoint.event_horizon_day) * 0.75, 1.0)

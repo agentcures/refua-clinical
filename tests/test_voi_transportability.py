@@ -1,5 +1,6 @@
 import pandas as pd
 
+import refua_clinical.voi as voi_module
 from refua_clinical.models import default_simulation_config
 from refua_clinical.transportability import (
     assess_transportability,
@@ -26,6 +27,55 @@ def test_voi_returns_recommendation_and_scenarios() -> None:
 
     markdown = voi_to_markdown(payload)
     assert "Value of Information" in markdown
+
+
+def test_information_gain_uses_matching_threshold_baseline(monkeypatch) -> None:
+    class _Result:
+        def __init__(self, summary: dict[str, float]) -> None:
+            self.summary = summary
+
+    def fake_simulate(config, population):  # type: ignore[no-untyped-def]
+        del population
+        power = (
+            0.10
+            + 0.40 * float(config.stopping.success_posterior_threshold)
+            + 0.001 * float(config.enrollment.total_n)
+        )
+        return _Result(
+            {
+                "power": power,
+                "mean_effect": 4.0,
+                "safety_event_rate": 0.05,
+                "expected_sample_size": float(config.enrollment.total_n),
+            }
+        )
+
+    monkeypatch.setattr(voi_module, "_simulate_trials_with_population", fake_simulate)
+    monkeypatch.setattr(
+        voi_module, "_population_table_for_config", lambda config, cache: None
+    )
+
+    config = default_simulation_config()
+    payload = estimate_value_of_information(
+        config,
+        candidate_extra_n=[0, 30],
+        candidate_success_thresholds=[0.90, 0.95],
+        candidate_min_allocations=[0.15],
+        replicates_per_scenario=20,
+    )
+    by_key = {
+        (int(item["extra_n"]), float(item["success_threshold"])): item
+        for item in payload["scenarios"]
+    }
+    assert by_key[(0, 0.95)]["information_gain"] == 0.0
+    matched_gain = by_key[(30, 0.95)]["utility"] - by_key[(0, 0.95)]["utility"]
+    other_gain = by_key[(30, 0.95)]["utility"] - by_key[(0, 0.90)]["utility"]
+    assert by_key[(30, 0.95)]["information_gain"] == matched_gain
+    assert by_key[(30, 0.95)]["information_gain"] != other_gain
+    assert int(payload["baseline"]["extra_n"]) == 0
+    assert float(payload["baseline"]["success_threshold"]) == float(
+        payload["best_scenario"]["success_threshold"]
+    )
 
 
 def test_transportability_assessment_reports_shift() -> None:

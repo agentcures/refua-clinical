@@ -72,11 +72,30 @@ def estimate_value_of_information(
                     }
                 )
 
-    baseline = scenarios[0]
+    if not scenarios:
+        raise ValueError("Value-of-information search produced no scenarios.")
+
+    # Gain is the utility change versus the smallest enrollment for the same
+    # success threshold and allocation floor. Comparing every scenario with
+    # scenarios[0] mixes different decision rules.
+    baseline_by_key: dict[tuple[float, float], dict[str, Any]] = {}
     for scenario in scenarios:
-        scenario["information_gain"] = float(scenario["utility"] - baseline["utility"])
+        key = (float(scenario["success_threshold"]), float(scenario["min_allocation"]))
+        current = baseline_by_key.get(key)
+        if current is None or int(scenario["extra_n"]) < int(current["extra_n"]):
+            baseline_by_key[key] = scenario
+
+    for scenario in scenarios:
+        key = (float(scenario["success_threshold"]), float(scenario["min_allocation"]))
+        matched_baseline = baseline_by_key[key]
+        scenario["information_gain"] = float(
+            scenario["utility"] - matched_baseline["utility"]
+        )
 
     best = max(scenarios, key=lambda item: float(item["information_gain"]))
+    baseline = baseline_by_key[
+        (float(best["success_threshold"]), float(best["min_allocation"]))
+    ]
     recommendation = (
         f"Expand by +{best['extra_n']} patients"
         if float(best["information_gain"]) > 0.0 and int(best["extra_n"]) > 0

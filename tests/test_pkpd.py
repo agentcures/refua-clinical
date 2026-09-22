@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 from refua_clinical.models import ArmSpec, EndpointSpec, PDModelSpec, PKModelSpec
-from refua_clinical.pkpd import simulate_pd_outcomes, simulate_pk_metrics
+from refua_clinical.pkpd import PKMetrics, simulate_pd_outcomes, simulate_pk_metrics
 
 
 def test_pk_exposure_increases_with_dose() -> None:
@@ -133,3 +133,35 @@ def test_biologic_pk_supports_route_and_interval_dosing() -> None:
     assert float(sc_q2w.cmax.mean()) > float(sc_q2w.ctrough.mean())
     assert float(sc_q1w.cavg.mean()) > float(sc_q2w.cavg.mean())
     assert float(iv_q2w.cmax.mean()) > float(sc_q2w.cmax.mean())
+
+
+def test_binary_endpoint_stays_binary_when_operational_shift_is_applied() -> None:
+    rng = np.random.default_rng(11)
+    n = 40
+    covariates = pd.DataFrame(
+        {
+            "age": rng.normal(60, 8, size=n),
+            "weight": rng.normal(78, 10, size=n),
+            "biomarker_z": rng.normal(0, 1, size=n),
+        }
+    )
+    pk = PKMetrics(
+        auc=np.full(n, 80.0),
+        cavg=np.full(n, 2.0),
+        cmax=np.full(n, 4.0),
+        ctrough=np.full(n, 1.0),
+        cl=np.full(n, 1.2),
+        v=np.full(n, 18.0),
+    )
+    frame = simulate_pd_outcomes(
+        covariates,
+        arm=ArmSpec("high", "High", 80.0),
+        endpoint=EndpointSpec(kind="binary", responder_threshold=0.0),
+        pd_model=PDModelSpec(),
+        pk=pk,
+        drift_block=np.zeros(n),
+        rng=rng,
+        operational_shift=np.full(n, 4.0),
+    )
+    values = frame["endpoint_value"].to_numpy(dtype=float)
+    assert np.all((values == 0.0) | (values == 1.0))

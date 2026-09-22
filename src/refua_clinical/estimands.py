@@ -80,11 +80,12 @@ def _apply_hypothetical(
         control_mean = float(control["endpoint_value"].mean())
 
     imputed_value = control_mean + float(estimand.control_imputation_shift)
+    observed = out.loc[~dropped, "analysis_value"]
+    # Dropouts share one imputed value, so their own median is that value and
+    # would mark every dropout as a responder. Compare with completers instead.
+    threshold = float(observed.median()) if not observed.empty else float("inf")
     out.loc[dropped, "analysis_value"] = imputed_value
-    out.loc[dropped, "analysis_responder"] = (
-        out.loc[dropped, "analysis_value"]
-        >= out.loc[dropped, "analysis_value"].median()
-    )
+    out.loc[dropped, "analysis_responder"] = float(imputed_value) >= threshold
     return out
 
 

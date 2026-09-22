@@ -126,3 +126,22 @@ def test_interim_stopping_supports_time_to_event_endpoint() -> None:
 
     assert decision["effect_measure"] == "hazard_ratio"
     assert decision["analysis_method"] in {"cox_ph", "logrank_rate_ratio"}
+
+
+def test_hypothetical_estimand_does_not_mark_every_dropout_as_responder() -> None:
+    observed = pd.DataFrame(
+        {
+            "arm_id": ["control", "control", "high", "high"],
+            "endpoint_value": [1.0, 2.0, 10.0, 11.0],
+            "responder": [False, False, True, True],
+            "dropped_out": [True, False, True, False],
+        }
+    )
+    analysis = apply_estimand(
+        observed,
+        control_arm_id="control",
+        estimand=EstimandSpec(strategy="hypothetical", control_imputation_shift=0.0),
+    )
+    dropped = analysis.loc[analysis["dropped_out"].astype(bool), "analysis_responder"]
+    assert not bool(dropped.all())
+    assert bool((~dropped.astype(bool)).all())
