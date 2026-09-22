@@ -46,17 +46,18 @@ Documentation = "https://github.com/agentcures/refua#readme"
 Changelog = "https://github.com/agentcures/refua/blob/main/refua-clinical/CHANGELOG.md"
 Issues = "https://github.com/agentcures/refua/issues"
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
   "pytest>=8.0.0",
   "ruff>=0.6.0",
   "mypy>=1.11.0",
   "pre-commit>=4.5.1",
-  "pandas-stubs>=2.2.3.250527",
+  "pandas-stubs>=2.2.3.250527,<3",
   "types-PyYAML>=6.0.12.20250915",
-  "build>=1.2.2",
   "twine>=6.1.0",
 ]
+
+[project.optional-dependencies]
 admet = [
   "refua>=0.7.1",
 ]

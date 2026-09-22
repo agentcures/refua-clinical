@@ -27,19 +27,19 @@ It generates copula-based virtual patients, runs adaptive multi-arm trial simula
 
 ```bash
 cd refua-clinical
-pip install -e .
+uv sync
 ```
 
 With integrations:
 
 ```bash
-pip install -e .[integrations]
+uv sync --extra integrations
 ```
 
 With Refua ADMET support from SMILES:
 
 ```bash
-pip install -e .[admet]
+uv sync --extra admet
 ```
 
 Check installed CLI version:
@@ -299,9 +299,9 @@ From a monorepo checkout:
 
 ```bash
 cd refua
-pip install -e .[admet]
+uv sync --extra admet
 cd ../refua-clinical
-pip install -e .[admet]
+uv sync --extra admet
 jupyter notebook examples/refua_api_to_clinical_e2e.ipynb
 ```
 
